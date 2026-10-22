@@ -141,7 +141,7 @@ if not df.empty:
         st.write("Suche live nach neuen Unternehmen in Osnabrück und prüfe die Passung.")
         
         if not api_bereit:
-            st.error("⚠️ Gemini API-Schlüssel fehlt oder ist ungültig.")
+            st.error("⚠️ ini API-Schlüssel fehlt oder ist ungültig.")
             
         such_branche = st.text_input("Welche Branche suchst du in Osnabrück? (z.B. Kanzlei, Marketing, Logistik)", placeholder="Kanzlei")
         nutzer_profil = st.text_area("Lebenslauf oder Kurzprofil hier einfügen:", height=200, placeholder="Ich studiere Jura im 5. Semester...")
@@ -182,7 +182,7 @@ if not df.empty:
                     st.success(f"{len(results)} Unternehmen gefunden. Starte KI-Bewertung...")
                     
                     # 2. GEMINI BEWERTUNG
-                    model = genai.GenerativeModel('gemini-2.5-flash-lite')
+                    model = genai.GenerativeModel('gemini-3.5-flash-lite')
                     progress_bar = st.progress(0)
                     
                     ergebnis_liste = []
