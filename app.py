@@ -17,7 +17,6 @@ except Exception:
 
 @st.cache_data
 def load_and_clean_data():
-    # Lädt die bestehende Excel-Datei für Tab 1
     try:
         df = pd.read_excel("osnabrueck_matched.xlsx")
     except Exception as e:
@@ -57,7 +56,6 @@ def load_and_clean_data():
 
 df = load_and_clean_data()
 
-# --- UI in zwei Tabs aufteilen ---
 if not df.empty:
     tab1, tab2 = st.tabs(["📊 Datenbank (PMO & IT)", "🤖 Neue Live-Analyse (SaaS)"])
     
@@ -111,7 +109,6 @@ if not df.empty:
             kat_counts = df_filtered["Kategorie"].value_counts()
             st.bar_chart(kat_counts)
         
-        # Spalten anpassen, falls 'Begründung' oder 'Adresse' in der Excel fehlen, Fehler vermeiden
         cols_to_drop = [col for col in ["Begründung", "Adresse"] if col in df_filtered.columns]
         
         st.dataframe(
@@ -153,26 +150,36 @@ if not df.empty:
             if not nutzer_profil or not such_branche:
                 st.warning("Bitte gib eine Branche und ein Profil ein.")
             elif api_bereit:
-                # 1. GOOGLE PLACES ABFRAGE
+                # 1. GOOGLE PLACES ABFRAGE (NEW API)
                 st.info(f"Suche nach '{such_branche}' in Osnabrück auf Google Maps...")
                 try:
                     places_key = st.secrets["PLACES_API_KEY"]
-                    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-                    # requests übernimmt hier automatisch die sichere Codierung von Leerzeichen und Umlauten
-                    params = {
-                        "query": f"{such_branche} in Osnabrück",
-                        "key": places_key
-                    }
-                    response = requests.get(url, params=params).json()
+                    url = "https://places.googleapis.com/v1/places:searchText"
                     
-                    # Zeigt den echten Google-Fehler an, falls etwas blockiert wird
-                    if response.get("status") not in ["OK", "ZERO_RESULTS"]:
-                        st.error(f"Google API Fehler: {response.get('status')} - {response.get('error_message', 'Keine Details')}")
+                    headers = {
+                        "Content-Type": "application/json",
+                        "X-Goog-Api-Key": places_key,
+                        "X-Goog-FieldMask": "places.displayName,places.formattedAddress"
+                    }
+                    
+                    payload = {
+                        "textQuery": f"{such_branche} in Osnabrück"
+                    }
+                    
+                    response = requests.post(url, headers=headers, json=payload).json()
+                    
+                    if "error" in response:
+                        st.error(f"Google API Fehler: {response['error'].get('message', 'Keine Details')}")
+                        results = []
+                    else:
+                        results = response.get('places', [])[:5] 
                         
-                    results = response.get('results', [])[:5] 
                 except Exception as e:
                     st.error(f"Fehler bei der Anfrage: {e}")
                     results = []
+
+                if results:
+                    st.success(f"{len(results)} Unternehmen gefunden. Starte KI-Bewertung...")
                     
                     # 2. GEMINI BEWERTUNG
                     model = genai.GenerativeModel('gemini-pro')
@@ -181,8 +188,8 @@ if not df.empty:
                     ergebnis_liste = []
                     
                     for i, place in enumerate(results):
-                        firma = place.get('name', 'Unbekannt')
-                        adresse = place.get('formatted_address', 'Keine Adresse')
+                        firma = place.get('displayName', {}).get('text', 'Unbekannt')
+                        adresse = place.get('formattedAddress', 'Keine Adresse')
                         
                         prompt = f"""
                         Du bist ein Karriere-Scout. 
