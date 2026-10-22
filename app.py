@@ -139,7 +139,7 @@ try:
                 test_df = df.head(5).copy()
                 
                 # Wir initialisieren das günstige und schnelle Flash-Modell
-                model = genai.GenerativeModel('gemini-pro')
+                model = genai.GenerativeModel("gemini-3.5-flash-lite")
                 
                 progress_bar = st.progress(0)
                 status_text = st.empty()
