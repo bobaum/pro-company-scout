@@ -141,7 +141,7 @@ if not df.empty:
         st.write("Suche live nach neuen Unternehmen in Osnabrück und prüfe die Passung.")
         
         if not api_bereit:
-            st.error("⚠️ ini API-Schlüssel fehlt oder ist ungültig.")
+            st.error("⚠️ Gemini API-Schlüssel fehlt oder ist ungültig.")
             
         such_branche = st.text_input("Welche Branche suchst du in Osnabrück? (z.B. Kanzlei, Marketing, Logistik)", placeholder="Kanzlei")
         nutzer_profil = st.text_area("Lebenslauf oder Kurzprofil hier einfügen:", height=200, placeholder="Ich studiere Jura im 5. Semester...")
@@ -182,8 +182,8 @@ if not df.empty:
                     st.success(f"{len(results)} Unternehmen gefunden. Starte KI-Bewertung...")
                     
                     # 2. GEMINI BEWERTUNG
-                    model = genai.GenerativeModel('gemini-3.5-flash-lite')
-                    progress_bar = st.progress(0)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    st.markdown("### 🏆 Live-Analyse läuft...")
                     
                     ergebnis_liste = []
                     
@@ -191,33 +191,31 @@ if not df.empty:
                         firma = place.get('displayName', {}).get('text', 'Unbekannt')
                         adresse = place.get('formattedAddress', 'Keine Adresse')
                         
-                        prompt = f"""
-                        Du bist ein Karriere-Scout. 
-                        Profil des Nutzers: '{nutzer_profil}'
-                        Gefundenes Unternehmen: '{firma}'
-                        
-                        Bewerte kurz und prägnant in 2-3 Sätzen, ob und wie dieses Profil bei diesem Unternehmen (anhand des Namens/der Branche) nützlich sein könnte.
-                        Gib am Ende ein Rating von 1/5 bis 5/5 Sternen.
-                        """
-                        
-                        try:
-                            ki_antwort = model.generate_content(prompt).text
-                        except Exception as e:
-                            ki_antwort = f"Fehler bei Bewertung: {e}"
+                        with st.spinner(f"KI analysiert: {firma} ({i+1}/5)..."):
+                            prompt = f"""
+                            Du bist ein Karriere-Scout. 
+                            Profil des Nutzers: '{nutzer_profil}'
+                            Gefundenes Unternehmen: '{firma}'
                             
-                        ergebnis_liste.append({
-                            "Unternehmen": firma,
-                            "Adresse": adresse,
-                            "KI-Analyse": ki_antwort
-                        })
-                        
-                        progress_bar.progress((i + 1) / len(results))
-                        time.sleep(1) 
+                            Bewerte in 2-3 Sätzen, ob das Profil passt. Gib am Ende ein Rating von 1/5 bis 5/5 Sternen.
+                            """
+                            
+                            try:
+                                ki_antwort = model.generate_content(prompt).text
+                                st.success(f"**{firma}**: {ki_antwort}")
+                            except Exception as e:
+                                ki_antwort = f"Fehler bei Bewertung: {e}"
+                                st.error(f"❌ Fehler bei {firma}: {e}")
+                                
+                            ergebnis_liste.append({
+                                "Unternehmen": firma,
+                                "Adresse": adresse,
+                                "KI-Analyse": ki_antwort
+                            })
+                            time.sleep(1) 
                     
-                    # 3. ERGEBNISSE ANZEIGEN
-                    st.markdown("### 🏆 Deine persönlichen Matches")
-                    df_live = pd.DataFrame(ergebnis_liste)
-                    st.dataframe(df_live, width='stretch', hide_index=True)
+                    st.write("✅ **Alle 5 Unternehmen analysiert!**")
+                    st.dataframe(pd.DataFrame(ergebnis_liste), width='stretch', hide_index=True)
                 else:
                     st.warning("Keine Unternehmen gefunden. Versuche einen anderen Suchbegriff.")
 else:
