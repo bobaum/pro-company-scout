@@ -182,7 +182,7 @@ if not df.empty:
                     st.success(f"{len(results)} Unternehmen gefunden. Starte KI-Bewertung...")
                     
                     # 2. GEMINI BEWERTUNG
-                    model = genai.GenerativeModel('gemini-pro')
+                    model = genai.GenerativeModel('gemini-2.5-flash-lite')
                     progress_bar = st.progress(0)
                     
                     ergebnis_liste = []
