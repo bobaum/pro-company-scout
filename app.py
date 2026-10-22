@@ -157,15 +157,22 @@ if not df.empty:
                 st.info(f"Suche nach '{such_branche}' in Osnabrück auf Google Maps...")
                 try:
                     places_key = st.secrets["PLACES_API_KEY"]
-                    url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={such_branche}+in+Osnabrück&key={places_key}"
-                    response = requests.get(url).json()
+                    url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+                    # requests übernimmt hier automatisch die sichere Codierung von Leerzeichen und Umlauten
+                    params = {
+                        "query": f"{such_branche} in Osnabrück",
+                        "key": places_key
+                    }
+                    response = requests.get(url, params=params).json()
+                    
+                    # Zeigt den echten Google-Fehler an, falls etwas blockiert wird
+                    if response.get("status") not in ["OK", "ZERO_RESULTS"]:
+                        st.error(f"Google API Fehler: {response.get('status')} - {response.get('error_message', 'Keine Details')}")
+                        
                     results = response.get('results', [])[:5] 
                 except Exception as e:
-                    st.error(f"Fehler bei der Google-Suche oder fehlender PLACES_API_KEY: {e}")
+                    st.error(f"Fehler bei der Anfrage: {e}")
                     results = []
-
-                if results:
-                    st.success(f"{len(results)} Unternehmen gefunden. Starte KI-Bewertung...")
                     
                     # 2. GEMINI BEWERTUNG
                     model = genai.GenerativeModel('gemini-pro')
