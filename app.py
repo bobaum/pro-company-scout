@@ -119,66 +119,75 @@ try:
                 st.write(f"**KI-Begründung:** {row['Begründung']}")
                 st.markdown(f"🔗 [Zur Unternehmenswebsite]({row['Website']})")
 
-    # ---------------------------------------------------------
-    # TAB 2: LIVE-ANALYSE FÜR DRITTE
+   # ---------------------------------------------------------
+    # TAB 2: LIVE-ANALYSE FÜR DRITTE (SaaS)
     # ---------------------------------------------------------
     with tab2:
-        st.subheader("🚀 Individuelle Live-Analyse")
-        st.write("Prüfe, wie gut ein neues Profil (z.B. Jura, Marketing, BWL) zu den Osnabrücker Unternehmen passt.")
+        st.subheader("🚀 Individuelle Live-Suche & Analyse")
+        st.write("Suche live nach neuen Unternehmen in Osnabrück und prüfe die Passung.")
         
         if not api_bereit:
-            st.error("⚠️ API-Schlüssel konnte nicht aus den Secrets geladen werden.")
+            st.error("⚠️ Gemini API-Schlüssel fehlt.")
+            
+        # Neues Eingabefeld für die Google Places Suche
+        such_branche = st.text_input("Welche Branche suchst du in Osnabrück? (z.B. Kanzlei, Marketing, Logistik)", placeholder="Kanzlei")
+        nutzer_profil = st.text_area("Lebenslauf oder Kurzprofil hier einfügen:", height=200, placeholder="Ich studiere Jura im 5. Semester...")
         
-        nutzer_profil = st.text_area("Lebenslauf oder Kurzprofil hier einfügen:", height=200, placeholder="Ich studiere Jura im 5. Semester und suche ein Praktikum im Bereich Compliance...")
-        
-        if st.button("KI-Analyse starten (Testlauf für 5 Firmen)"):
-            if not nutzer_profil:
-                st.warning("Bitte gib zuerst ein Profil ein.")
+        if st.button("Google-Suche & KI-Analyse starten (Top 5)"):
+            if not nutzer_profil or not such_branche:
+                st.warning("Bitte gib eine Branche und ein Profil ein.")
             elif api_bereit:
-                # Wir testen es mit den ersten 5 Unternehmen aus der Excel-Liste
-                test_df = df.head(5).copy()
+                # 1. GOOGLE PLACES ABFRAGE
+                st.info(f"Suche nach '{such_branche}' in Osnabrück auf Google Maps...")
+                places_key = st.secrets["PLACES_API_KEY"]
+                url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={such_branche}+in+Osnabrück&key={places_key}"
                 
-                # Wir initialisieren das günstige und schnelle Flash-Modell
-                model = genai.GenerativeModel("gemini-3.5-flash-lite")
-                
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                ergebnisse = []
-                
-                # Schleife über die 5 Test-Unternehmen
-                for i, row in test_df.iterrows():
-                    firma = row['Unternehmensname']
-                    was_sie_machen = row['Was sie machen']
-                    
-                    status_text.text(f"Analysiere Firma {i+1}/5: {firma}...")
-                    
-                    prompt = f"""
-                    Du bist ein Karriere-Scout. 
-                    Hier ist das Profil eines Nutzers: '{nutzer_profil}'
-                    Hier ist ein Unternehmen: '{firma}' (Das machen sie: '{was_sie_machen}')
-                    
-                    Wie gut passt das Profil zu diesem Unternehmen? 
-                    Antworte in 2-3 kurzen Sätzen und gib am Ende ein klares Rating von 1/5 bis 5/5 Sternen.
-                    """
-                    
-                    try:
-                        response = model.generate_content(prompt)
-                        ergebnis_text = response.text
-                    except Exception as e:
-                        ergebnis_text = f"Fehler: {e}"
-                        
-                    ergebnisse.append(ergebnis_text)
-                    
-                    # Ladebalken aktualisieren und 1 Sekunde warten (API-Limit Schutz)
-                    progress_bar.progress((i + 1) / len(test_df))
-                    time.sleep(1)
-                
-                status_text.text("Analyse abgeschlossen!")
-                test_df["Neue Live-Begründung"] = ergebnisse
-                
-                # Ergebnisse als Tabelle anzeigen
-                st.success("Hier sind deine individuellen Ergebnisse:")
-                st.dataframe(test_df[["Unternehmensname", "Neue Live-Begründung"]], width='stretch', hide_index=True)
+                try:
+                    response = requests.get(url).json()
+                    results = response.get('results', [])[:5] # Wir nehmen die Top 5 für den Test
+                except Exception as e:
+                    st.error(f"Fehler bei der Google-Suche: {e}")
+                    results = []
 
-except Exception as e:
-    st.error(f"Fehler beim Laden: {e}")
+                if results:
+                    st.success(f"{len(results)} Unternehmen gefunden. Starte KI-Bewertung...")
+                    
+                    # 2. GEMINI BEWERTUNG
+                    model = genai.GenerativeModel('gemini-pro')
+                    progress_bar = st.progress(0)
+                    
+                    ergebnis_liste = []
+                    
+                    for i, place in enumerate(results):
+                        firma = place.get('name', 'Unbekannt')
+                        adresse = place.get('formatted_address', 'Keine Adresse')
+                        
+                        prompt = f"""
+                        Du bist ein Karriere-Scout. 
+                        Profil des Nutzers: '{nutzer_profil}'
+                        Gefundenes Unternehmen: '{firma}'
+                        
+                        Bewerte kurz und prägnant in 2-3 Sätzen, ob und wie dieses Profil bei diesem Unternehmen (anhand des Namens/der Branche) nützlich sein könnte.
+                        Gib am Ende ein Rating von 1/5 bis 5/5 Sternen.
+                        """
+                        
+                        try:
+                            ki_antwort = model.generate_content(prompt).text
+                        except Exception as e:
+                            ki_antwort = f"Fehler bei Bewertung: {e}"
+                            
+                        ergebnis_liste.append({
+                            "Unternehmen": firma,
+                            "Adresse": adresse,
+                            "KI-Analyse": ki_antwort
+                        })
+                        
+                        progress_bar.progress((i + 1) / len(results))
+                        time.sleep(1) # API-Schutz
+                    
+                    # 3. ERGEBNISSE ANZEIGEN
+                    st.markdown("### 🏆 Deine persönlichen Matches")
+                    df_live = pd.DataFrame(ergebnis_liste)
+                    st.dataframe(df_live, width='stretch', hide_index=True)
+                else:
+                    st.warning("Keine Unternehmen gefunden. Versuche einen anderen Suchbegriff.")
