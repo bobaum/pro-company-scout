@@ -182,7 +182,7 @@ if not df.empty:
                     st.success(f"{len(results)} Unternehmen gefunden. Starte KI-Bewertung...")
                     
                     # 2. GEMINI BEWERTUNG
-                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    model = genai.GenerativeModel('gemini-3.5-flash-lite')
                     st.markdown("### 🏆 Live-Analyse läuft...")
                     
                     ergebnis_liste = []
