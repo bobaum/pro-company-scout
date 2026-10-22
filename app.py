@@ -3,6 +3,7 @@ import pandas as pd
 import re
 import google.generativeai as genai
 import time
+import requests
 
 st.set_page_config(page_title="Company Scout Osnabrück", layout="wide")
 st.title("🎯 Company Scout Osnabrück")
@@ -16,7 +17,12 @@ except Exception:
 
 @st.cache_data
 def load_and_clean_data():
-    df = pd.read_excel("osnabrueck_matched.xlsx")
+    # Lädt die bestehende Excel-Datei für Tab 1
+    try:
+        df = pd.read_excel("osnabrueck_matched.xlsx")
+    except Exception as e:
+        st.error(f"Excel-Datei konnte nicht geladen werden: {e}")
+        return pd.DataFrame()
 
     def clean_rating(val):
         val = str(val).lower()
@@ -43,17 +49,21 @@ def load_and_clean_data():
         if "holding" in val or "finanz" in val: return "Finance & Holding"
         return "Wirtschaft & Sonstiges"
 
-    df["Match-Rating"] = df["Match-Rating"].apply(clean_rating)
-    df["Einstiegschancen"] = df["Einstiegschancen"].apply(clean_chancen)
-    df["Kategorie"] = df["Kategorie"].apply(clean_kategorie)
+    if not df.empty:
+        df["Match-Rating"] = df["Match-Rating"].apply(clean_rating)
+        df["Einstiegschancen"] = df["Einstiegschancen"].apply(clean_chancen)
+        df["Kategorie"] = df["Kategorie"].apply(clean_kategorie)
     return df
 
-try:
-    df = load_and_clean_data()
-    
-    # --- UI in zwei Tabs aufteilen ---
+df = load_and_clean_data()
+
+# --- UI in zwei Tabs aufteilen ---
+if not df.empty:
     tab1, tab2 = st.tabs(["📊 Datenbank (PMO & IT)", "🤖 Neue Live-Analyse (SaaS)"])
     
+    # ---------------------------------------------------------
+    # TAB 1: DEINE BESTEHENDE DATENBANK
+    # ---------------------------------------------------------
     with tab1:
         st.markdown("Deine bereinigte Übersicht für PMO, IT-Projektkoordination und Consulting.")
         
@@ -101,8 +111,11 @@ try:
             kat_counts = df_filtered["Kategorie"].value_counts()
             st.bar_chart(kat_counts)
         
+        # Spalten anpassen, falls 'Begründung' oder 'Adresse' in der Excel fehlen, Fehler vermeiden
+        cols_to_drop = [col for col in ["Begründung", "Adresse"] if col in df_filtered.columns]
+        
         st.dataframe(
-            df_filtered.drop(columns=["Begründung", "Adresse"]),
+            df_filtered.drop(columns=cols_to_drop),
             width='stretch',
             hide_index=True,
             column_config={
@@ -115,11 +128,15 @@ try:
         st.subheader("📝 Detailansicht & KI-Bewertungen")
         for index, row in df_filtered.iterrows():
             with st.expander(f"🏢 {row['Unternehmensname']} | Rating: {row['Match-Rating']} ⭐ | Chancen: {row['Einstiegschancen']}"):
-                st.write(f"**Was sie machen:** {row['Was sie machen']}")
-                st.write(f"**KI-Begründung:** {row['Begründung']}")
-                st.markdown(f"🔗 [Zur Unternehmenswebsite]({row['Website']})")
+                was_sie_machen = row['Was sie machen'] if 'Was sie machen' in row else 'Keine Info'
+                begruendung = row['Begründung'] if 'Begründung' in row else 'Keine Info'
+                website = row['Website'] if 'Website' in row else '#'
+                
+                st.write(f"**Was sie machen:** {was_sie_machen}")
+                st.write(f"**KI-Begründung:** {begruendung}")
+                st.markdown(f"🔗 [Zur Unternehmenswebsite]({website})")
 
-   # ---------------------------------------------------------
+    # ---------------------------------------------------------
     # TAB 2: LIVE-ANALYSE FÜR DRITTE (SaaS)
     # ---------------------------------------------------------
     with tab2:
@@ -127,9 +144,8 @@ try:
         st.write("Suche live nach neuen Unternehmen in Osnabrück und prüfe die Passung.")
         
         if not api_bereit:
-            st.error("⚠️ Gemini API-Schlüssel fehlt.")
+            st.error("⚠️ Gemini API-Schlüssel fehlt oder ist ungültig.")
             
-        # Neues Eingabefeld für die Google Places Suche
         such_branche = st.text_input("Welche Branche suchst du in Osnabrück? (z.B. Kanzlei, Marketing, Logistik)", placeholder="Kanzlei")
         nutzer_profil = st.text_area("Lebenslauf oder Kurzprofil hier einfügen:", height=200, placeholder="Ich studiere Jura im 5. Semester...")
         
@@ -139,14 +155,13 @@ try:
             elif api_bereit:
                 # 1. GOOGLE PLACES ABFRAGE
                 st.info(f"Suche nach '{such_branche}' in Osnabrück auf Google Maps...")
-                places_key = st.secrets["PLACES_API_KEY"]
-                url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={such_branche}+in+Osnabrück&key={places_key}"
-                
                 try:
+                    places_key = st.secrets["PLACES_API_KEY"]
+                    url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={such_branche}+in+Osnabrück&key={places_key}"
                     response = requests.get(url).json()
-                    results = response.get('results', [])[:5] # Wir nehmen die Top 5 für den Test
+                    results = response.get('results', [])[:5] 
                 except Exception as e:
-                    st.error(f"Fehler bei der Google-Suche: {e}")
+                    st.error(f"Fehler bei der Google-Suche oder fehlender PLACES_API_KEY: {e}")
                     results = []
 
                 if results:
@@ -183,7 +198,7 @@ try:
                         })
                         
                         progress_bar.progress((i + 1) / len(results))
-                        time.sleep(1) # API-Schutz
+                        time.sleep(1) 
                     
                     # 3. ERGEBNISSE ANZEIGEN
                     st.markdown("### 🏆 Deine persönlichen Matches")
@@ -191,3 +206,5 @@ try:
                     st.dataframe(df_live, width='stretch', hide_index=True)
                 else:
                     st.warning("Keine Unternehmen gefunden. Versuche einen anderen Suchbegriff.")
+else:
+    st.warning("Bitte lade die Datei 'osnabrueck_matched.xlsx' in dein GitHub Repository hoch.")
