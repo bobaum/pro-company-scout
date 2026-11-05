@@ -3,6 +3,7 @@ import pandas as pd
 import re
 import google.generativeai as genai
 from supabase import create_client, Client
+import PyPDF2
 
 st.set_page_config(page_title="Personal Job Scout", layout="wide")
 st.title("🎯 Personal Job Scout: Bo Baumann")
@@ -157,32 +158,44 @@ with tab3:
                             st.error(f"Fehler bei der KI-Abfrage: {e}")
 
 # ---------------------------------------------------------
-# TAB 4: MEIN PROFIL (Dynamischer Lebenslauf)
+# TAB 4: MEIN PROFIL (PDF-Upload & Dynamischer Lebenslauf)
 # ---------------------------------------------------------
 with tab4:
     st.subheader("👤 Mein Profil & Lebenslauf")
-    st.write("Hinterlege hier deinen Harvard-Lebenslauf und deine Skills. Die KI in Tab 3 nutzt diese Daten für alle Analysen.")
+    st.write("Lade deinen Harvard-Lebenslauf als PDF hoch oder füge den Text manuell ein. Die KI nutzt diese Daten für alle Analysen.")
     
     if db_bereit:
-        # Aktuelles Profil laden, falls vorhanden (Wir nutzen id=1 als festen Datensatz für dich)
+        # Aktuelles Profil aus Supabase laden
         profil_response = supabase.table("profil").select("*").eq("id", 1).execute()
-        current_cv = ""
-        current_skills = ""
-        current_ziele = ""
+        current_cv = profil_response.data[0].get("lebenslauf", "") if profil_response.data else ""
+        current_skills = profil_response.data[0].get("skills", "") if profil_response.data else ""
+        current_ziele = profil_response.data[0].get("ziele", "") if profil_response.data else ""
         
-        if profil_response.data:
-            current_cv = profil_response.data[0].get("lebenslauf", "")
-            current_skills = profil_response.data[0].get("skills", "")
-            current_ziele = profil_response.data[0].get("ziele", "")
-            
+        # --- NEU: PDF Upload ---
+        uploaded_file = st.file_uploader("📄 Lebenslauf als PDF hochladen (optional)", type="pdf")
+        if uploaded_file is not None:
+            try:
+                pdf_reader = PyPDF2.PdfReader(uploaded_file)
+                extracted_text = ""
+                for page in pdf_reader.pages:
+                    extracted_text += page.extract_text() + "\n"
+                
+                if extracted_text.strip():
+                    current_cv = extracted_text
+                    st.success("✅ PDF erfolgreich ausgelesen! Du kannst den Text unten prüfen und speichern.")
+                else:
+                    st.warning("Das PDF scheint leer zu sein oder besteht nur aus Bildern (nicht auslesbar).")
+            except Exception as e:
+                st.error(f"Fehler beim Lesen des PDFs: {e}")
+        
+        # --- Profil-Formular ---
         with st.form("profil_form"):
-            input_cv = st.text_area("📄 Dein Lebenslauf (Kopiere hier deinen Harvard-CV rein):", value=current_cv, height=300)
-            input_skills = st.text_input("🛠️ Zusätzliche Tech- & Soft-Skills (Kommasepariert):", value=current_skills, placeholder="z.B. Python, Streamlit, Supabase, Hardware-Setup")
+            input_cv = st.text_area("📄 Dein Lebenslauf-Text:", value=current_cv, height=300)
+            input_skills = st.text_input("🛠️ Zusätzliche Tech- & Soft-Skills (Kommasepariert):", value=current_skills, placeholder="z.B. Python, Streamlit, Supabase")
             input_ziele = st.text_input("🎯 Karriereziele (Für die KI als Kontext):", value=current_ziele, placeholder="z.B. IT-Consulting Praktikum in Dublin")
             
-            submitted = st.form_submit_button("💾 Profil speichern")
+            submitted = st.form_submit_button("💾 Profil in Cloud speichern")
             if submitted:
-                # Wir überschreiben immer den Datensatz mit id=1
                 profil_data = {
                     "id": 1,
                     "lebenslauf": input_cv,
@@ -190,4 +203,4 @@ with tab4:
                     "ziele": input_ziele
                 }
                 supabase.table("profil").upsert(profil_data).execute()
-                st.success("Dein Profil wurde erfolgreich in der Cloud aktualisiert! Tab 3 nutzt ab sofort diese neuen Daten.")
+                st.success("✅ Dein Profil wurde erfolgreich aktualisiert!")
