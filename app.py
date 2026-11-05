@@ -53,8 +53,8 @@ def load_and_clean_data():
 
 df = load_and_clean_data()
 
-# --- Drei personalisierte Tabs ---
-tab1, tab2, tab3 = st.tabs(["📊 Datenbank", "📈 Meine Pipeline", "🧠 Skill-Gap Analyse"])
+# --- Vier personalisierte Tabs ---
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Datenbank", "📈 Meine Pipeline", "🧠 Skill-Gap Analyse", "👤 Mein Profil"])
 
 # ---------------------------------------------------------
 # TAB 1: DATENBANK
@@ -71,91 +71,123 @@ with tab1:
         st.warning("Bitte lade die Datei 'osnabrueck_matched.xlsx' hoch.")
 
 # ---------------------------------------------------------
-# TAB 2: BEWERBUNGS-PIPELINE (Supabase)
+# TAB 2: BEWERBUNGS-PIPELINE
 # ---------------------------------------------------------
 with tab2:
     st.subheader("📈 Tracking: Aktuelle Bewerbungen")
-    st.write("Verwalte hier deine offenen Kontakte. Die Daten liegen sicher in deiner Supabase Cloud-Datenbank.")
-    
     if not db_bereit:
-        st.error("⚠️ Datenbankverbindung fehlt. Prüfe die Supabase Secrets in Streamlit.")
+        st.error("⚠️ Datenbankverbindung fehlt.")
     else:
         try:
-            # 1. Daten live aus Supabase abrufen
             response = supabase.table("pipeline").select("*").execute()
             df_pipeline = pd.DataFrame(response.data)
-            
-            # Falls die Tabelle noch komplett leer ist
             if df_pipeline.empty:
                 df_pipeline = pd.DataFrame(columns=["unternehmen", "rolle", "status", "deadline", "notizen"])
             
-            # 2. Interaktive Tabelle anzeigen (width statt use_container_width)
             edited_df = st.data_editor(
                 df_pipeline, 
                 num_rows="dynamic",
                 width="stretch",
                 column_config={
-                    "status": st.column_config.SelectboxColumn(
-                        "Status",
-                        options=["Neu", "In Vorbereitung", "Beworben", "Interview", "Angebot", "Abgesagt"]
-                    )
+                    "status": st.column_config.SelectboxColumn("Status", options=["Neu", "In Vorbereitung", "Beworben", "Interview", "Angebot", "Abgesagt"])
                 }
             )
             
-            # 3. Speichern-Button
-            if st.button("💾 Änderungen in Cloud speichern"):
+            if st.button("💾 Änderungen in Pipeline speichern"):
                 valid_data = edited_df[edited_df["unternehmen"].astype(str).str.strip() != ""]
                 records = valid_data.to_dict(orient="records")
-                
                 if records:
                     supabase.table("pipeline").upsert(records).execute()
-                    st.success("✅ Pipeline erfolgreich synchronisiert!")
-                else:
-                    st.warning("Keine gültigen Daten zum Speichern gefunden.")
-                    
+                    st.success("✅ Pipeline aktualisiert!")
         except Exception as e:
-            st.error(f"Fehler bei der Datenbank-Aktion: {e}")
+            st.error(f"Fehler: {e}")
 
 # ---------------------------------------------------------
 # TAB 3: SKILL-GAP & BEWERBUNGS-HELFER
 # ---------------------------------------------------------
 with tab3:
     st.subheader("🧠 KI Skill-Gap Analyse")
-    st.write("Vergleicht dein Profil mit den Anforderungen einer spezifischen Firma oder Stellenausschreibung.")
+    st.write("Vergleicht dein Profil dynamisch mit einer Stellenausschreibung.")
     
     if not api_bereit:
         st.error("⚠️ Gemini API-Schlüssel fehlt.")
+    elif not db_bereit:
+        st.error("⚠️ Datenbankverbindung fehlt.")
+    else:
+        # Profil live aus der Datenbank laden
+        profil_response = supabase.table("profil").select("*").eq("id", 1).execute()
         
-    ziel_unternehmen = st.text_input("Für welches Unternehmen möchtest du die Analyse starten?", placeholder="z.B. KPMG - Praktikum IT Consulting")
-    stellen_details = st.text_area("Optional: Füge hier Stichpunkte aus der Stellenanzeige ein:", height=100)
-    
-    if st.button("Skill-Gap analysieren"):
-        if not ziel_unternehmen:
-            st.warning("Bitte gib ein Ziel-Unternehmen ein.")
+        if not profil_response.data or not profil_response.data[0].get("lebenslauf"):
+            st.warning("⚠️ Bitte hinterlege zuerst deinen Lebenslauf im Tab '👤 Mein Profil', damit die KI dich analysieren kann.")
         else:
-            with st.spinner("Gemini analysiert dein Profil..."):
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                
-                prompt = f"""
-                Du bist ein technischer Karriere-Scout.
-                
-                Profil des Bewerbers (Bo Baumann): 
-                - Studium: Bachelor Wirtschaftsinformatik (3. Semester)
-                - Praktische Erfahrung: Minijob im internen IT-Support (Infrastruktur-Administration, Hardware-Konfiguration)
-                - Ziel: Praktikum/Werkstudent im Bereich IT-Consulting, PMO oder Cloud Services (Perspektive: späteres Auslandspraktikum in Dublin).
-                
-                Ziel-Unternehmen & Rolle: '{ziel_unternehmen}'
-                Details zur Stelle: '{stellen_details}'
-                
-                Führe eine prägnante Skill-Gap-Analyse durch. Strukturiere die Antwort in diese 3 Bereiche (nutze Bulletpoints):
-                1. **Matching Hard- & Soft-Skills:** Was bringt Bo durch sein Studium und den IT-Support bereits perfekt für diese Rolle mit?
-                2. **Der Skill-Gap:** Welche Technologien oder Soft-Skills fehlen ihm für diese konkrete Rolle wahrscheinlich noch?
-                3. **Handlungsempfehlung:** Wie kann er diese Lücke im Anschreiben strategisch kaschieren oder in den nächsten Wochen gezielt schließen?
-                """
-                
-                try:
-                    antwort = model.generate_content(prompt).text
-                    st.success("✅ Analyse abgeschlossen")
-                    st.markdown(antwort)
-                except Exception as e:
-                    st.error(f"Fehler bei der KI-Abfrage: {e}")
+            mein_profil = profil_response.data[0]
+            
+            ziel_unternehmen = st.text_input("Ziel-Unternehmen:", placeholder="z.B. KPMG")
+            stellen_details = st.text_area("Stichpunkte aus der Stellenanzeige:", height=100)
+            
+            if st.button("Skill-Gap analysieren"):
+                if not ziel_unternehmen:
+                    st.warning("Bitte gib ein Ziel-Unternehmen ein.")
+                else:
+                    with st.spinner("Gemini analysiert dein Profil..."):
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        
+                        prompt = f"""
+                        Du bist ein technischer Karriere-Scout.
+                        
+                        Hier ist der detaillierte Lebenslauf und das Profil des Bewerbers:
+                        Lebenslauf: {mein_profil.get('lebenslauf', 'Nicht angegeben')}
+                        Zusätzliche Skills: {mein_profil.get('skills', 'Nicht angegeben')}
+                        Karriereziele: {mein_profil.get('ziele', 'Nicht angegeben')}
+                        
+                        Ziel-Unternehmen & Rolle: '{ziel_unternehmen}'
+                        Details zur Stelle: '{stellen_details}'
+                        
+                        Führe eine prägnante Skill-Gap-Analyse durch. Strukturiere die Antwort in diese 3 Bereiche (nutze Bulletpoints):
+                        1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber durch seinen Lebenslauf bereits perfekt für diese Rolle mit?
+                        2. **Der Skill-Gap:** Welche Technologien oder Anforderungen fehlen ihm für diese konkrete Rolle wahrscheinlich noch?
+                        3. **Handlungsempfehlung:** Wie kann er diese Lücke im Anschreiben strategisch kaschieren oder durch seine bestehenden Erfahrungen ausgleichen?
+                        """
+                        
+                        try:
+                            antwort = model.generate_content(prompt).text
+                            st.success("✅ Analyse abgeschlossen")
+                            st.markdown(antwort)
+                        except Exception as e:
+                            st.error(f"Fehler bei der KI-Abfrage: {e}")
+
+# ---------------------------------------------------------
+# TAB 4: MEIN PROFIL (Dynamischer Lebenslauf)
+# ---------------------------------------------------------
+with tab4:
+    st.subheader("👤 Mein Profil & Lebenslauf")
+    st.write("Hinterlege hier deinen Harvard-Lebenslauf und deine Skills. Die KI in Tab 3 nutzt diese Daten für alle Analysen.")
+    
+    if db_bereit:
+        # Aktuelles Profil laden, falls vorhanden (Wir nutzen id=1 als festen Datensatz für dich)
+        profil_response = supabase.table("profil").select("*").eq("id", 1).execute()
+        current_cv = ""
+        current_skills = ""
+        current_ziele = ""
+        
+        if profil_response.data:
+            current_cv = profil_response.data[0].get("lebenslauf", "")
+            current_skills = profil_response.data[0].get("skills", "")
+            current_ziele = profil_response.data[0].get("ziele", "")
+            
+        with st.form("profil_form"):
+            input_cv = st.text_area("📄 Dein Lebenslauf (Kopiere hier deinen Harvard-CV rein):", value=current_cv, height=300)
+            input_skills = st.text_input("🛠️ Zusätzliche Tech- & Soft-Skills (Kommasepariert):", value=current_skills, placeholder="z.B. Python, Streamlit, Supabase, Hardware-Setup")
+            input_ziele = st.text_input("🎯 Karriereziele (Für die KI als Kontext):", value=current_ziele, placeholder="z.B. IT-Consulting Praktikum in Dublin")
+            
+            submitted = st.form_submit_button("💾 Profil speichern")
+            if submitted:
+                # Wir überschreiben immer den Datensatz mit id=1
+                profil_data = {
+                    "id": 1,
+                    "lebenslauf": input_cv,
+                    "skills": input_skills,
+                    "ziele": input_ziele
+                }
+                supabase.table("profil").upsert(profil_data).execute()
+                st.success("Dein Profil wurde erfolgreich in der Cloud aktualisiert! Tab 3 nutzt ab sofort diese neuen Daten.")
