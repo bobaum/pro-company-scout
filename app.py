@@ -220,41 +220,51 @@ with tab5:
                     url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={query}&key={places_api_key}"
                     
                     try:
-                        # Saubere Übergabe der Parameter, um Fehler bei Leerzeichen zu vermeiden
-                        params = {
-                            "query": f"{such_branche} in {such_ort}",
-                            "key": places_api_key
+                        url = "https://places.googleapis.com/v1/places:searchText"
+                        
+                        # Die neue API verlangt die Daten im Header (als "FieldMask" definieren wir, was wir wissen wollen)
+                        headers = {
+                            "Content-Type": "application/json",
+                            "X-Goog-Api-Key": places_api_key,
+                            "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.rating,places.id"
                         }
-                        url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
-                        res = requests.get(url, params=params).json()
                         
-                        status = res.get("status")
+                        # Der Suchbegriff wird als JSON-Payload gesendet
+                        payload = {
+                            "textQuery": f"{such_branche} in {such_ort}"
+                        }
                         
-                        # Google meldet alles außer "OK" oder "ZERO_RESULTS" als API-Fehler
-                        if status not in ["OK", "ZERO_RESULTS"]:
-                            st.error(f"Google API Fehler: Status '{status}'")
-                            st.write(f"Details von Google: {res.get('error_message', 'Keine weiteren Infos.')}")
-                            
-                        elif status == "OK" and res.get("results"):
-                            treffer = res["results"][:15]
-                            st.success(f"✅ {len(treffer)} Unternehmen gefunden!")
-                            
-                            for place in treffer:
-                                name = place.get("name")
-                                adresse = place.get("formatted_address", "Keine Adresse hinterlegt")
-                                rating = place.get("rating", "Keine Bewertung")
-                                place_id = place.get("place_id")
+                        response = requests.post(url, json=payload, headers=headers)
+                        res = response.json()
+                        
+                        if response.status_code == 200:
+                            places = res.get("places", [])
+                            if places:
+                                treffer = places[:15]
+                                st.success(f"✅ {len(treffer)} Unternehmen gefunden!")
                                 
-                                with st.expander(f"🏢 {name} (⭐ Rating: {rating})"):
-                                    st.write(f"**Adresse:** {adresse}")
-                                    if st.button(f"➕ {name} zur Pipeline hinzufügen", key=f"btn_{place_id}"):
-                                        if db_bereit:
-                                            new_entry = {"unternehmen": name, "rolle": f"Initiativ ({such_branche})", "status": "Neu", "notizen": adresse}
-                                            supabase.table("pipeline").insert(new_entry).execute()
-                                            st.success(f"Erfolgreich gespeichert! Du findest {name} jetzt in Tab 2.")
-                                        else:
-                                            st.error("Datenbankverbindung fehlt.")
+                                for place in treffer:
+                                    # Die neue API verschachtelt den Namen in 'displayName.text'
+                                    name = place.get("displayName", {}).get("text", "Unbekannt")
+                                    adresse = place.get("formattedAddress", "Keine Adresse hinterlegt")
+                                    rating = place.get("rating", "Keine Bewertung")
+                                    place_id = place.get("id")
+                                    
+                                    with st.expander(f"🏢 {name} (⭐ Rating: {rating})"):
+                                        st.write(f"**Adresse:** {adresse}")
+                                        
+                                        if st.button(f"➕ {name} zur Pipeline hinzufügen", key=f"btn_{place_id}"):
+                                            if db_bereit:
+                                                new_entry = {"unternehmen": name, "rolle": f"Initiativ ({such_branche})", "status": "Neu", "notizen": adresse}
+                                                supabase.table("pipeline").insert(new_entry).execute()
+                                                st.success(f"Erfolgreich gespeichert! Du findest {name} jetzt in Tab 2.")
+                                            else:
+                                                st.error("Datenbankverbindung fehlt.")
+                            else:
+                                st.warning("Die Suche war erfolgreich, aber es wurden keine passenden Unternehmen in der Region gefunden.")
                         else:
-                            st.warning("Google hat die Anfrage akzeptiert, aber keine passenden Unternehmen gefunden.")
+                            st.error(f"Google API Fehler: {response.status_code}")
+                            st.write(f"Details: {res.get('error', {}).get('message', 'Keine weiteren Infos')}")
+                            
                     except Exception as e:
                         st.error(f"Systemfehler bei der Anfrage: {e}")
