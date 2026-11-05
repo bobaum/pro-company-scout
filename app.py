@@ -166,7 +166,7 @@ with tab2:
             edited_df = st.data_editor(
                 df_pipeline, 
                 num_rows="dynamic",
-                use_container_width=True,
+                use_container_width="stretch",
                 column_config={
                     "status": st.column_config.SelectboxColumn(
                         "Status",
