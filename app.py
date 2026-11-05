@@ -220,9 +220,23 @@ with tab5:
                     url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={query}&key={places_api_key}"
                     
                     try:
-                        res = requests.get(url).json()
-                        if "results" in res and res["results"]:
-                            treffer = res["results"][:15] # Zeige die Top 15 an
+                        # Saubere Übergabe der Parameter, um Fehler bei Leerzeichen zu vermeiden
+                        params = {
+                            "query": f"{such_branche} in {such_ort}",
+                            "key": places_api_key
+                        }
+                        url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
+                        res = requests.get(url, params=params).json()
+                        
+                        status = res.get("status")
+                        
+                        # Google meldet alles außer "OK" oder "ZERO_RESULTS" als API-Fehler
+                        if status not in ["OK", "ZERO_RESULTS"]:
+                            st.error(f"Google API Fehler: Status '{status}'")
+                            st.write(f"Details von Google: {res.get('error_message', 'Keine weiteren Infos.')}")
+                            
+                        elif status == "OK" and res.get("results"):
+                            treffer = res["results"][:15]
                             st.success(f"✅ {len(treffer)} Unternehmen gefunden!")
                             
                             for place in treffer:
@@ -233,23 +247,14 @@ with tab5:
                                 
                                 with st.expander(f"🏢 {name} (⭐ Rating: {rating})"):
                                     st.write(f"**Adresse:** {adresse}")
-                                    
-                                    # Speichert das Unternehmen direkt in Supabase (Tab 2)
                                     if st.button(f"➕ {name} zur Pipeline hinzufügen", key=f"btn_{place_id}"):
                                         if db_bereit:
-                                            new_entry = {
-                                                "unternehmen": name, 
-                                                "rolle": f"Initiativ ({such_branche})", 
-                                                "status": "Neu", 
-                                                "notizen": adresse
-                                            }
+                                            new_entry = {"unternehmen": name, "rolle": f"Initiativ ({such_branche})", "status": "Neu", "notizen": adresse}
                                             supabase.table("pipeline").insert(new_entry).execute()
                                             st.success(f"Erfolgreich gespeichert! Du findest {name} jetzt in Tab 2.")
                                         else:
                                             st.error("Datenbankverbindung fehlt.")
                         else:
-                            st.warning("Keine passenden Unternehmen gefunden. Versuche andere Suchbegriffe.")
+                            st.warning("Google hat die Anfrage akzeptiert, aber keine passenden Unternehmen gefunden.")
                     except Exception as e:
-                        st.error(f"Fehler bei der API-Abfrage: {e}")
-            else:
-                st.warning("Bitte gib sowohl eine Branche als auch einen Ort ein.")
+                        st.error(f"Systemfehler bei der Anfrage: {e}")
