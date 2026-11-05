@@ -1,7 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
-import google.generativeai as genai
-
+from google import genai
 # --- 1. SEITEN-KONFIGURATION ---
 st.set_page_config(page_title="Personal Job Scout", page_icon="🎯", layout="wide")
 
@@ -25,10 +24,10 @@ def init_connections():
         status["supabase"] = True
     except Exception:
         pass
-        
-    # Google Gemini AI
+
+        # Google Gemini API
     try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
         status["gemini"] = True
     except Exception:
         pass
