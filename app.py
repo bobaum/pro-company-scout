@@ -3,6 +3,7 @@ import pandas as pd
 import re
 import google.generativeai as genai
 import time
+from supabase import create_client, Client
 import requests
 
 st.set_page_config(page_title="Company Scout Osnabrück", layout="wide")
@@ -14,6 +15,15 @@ try:
     api_bereit = True
 except Exception:
     api_bereit = False
+
+# --- Supabase Datenbank laden ---
+try:
+    supabase_url = st.secrets["SUPABASE_URL"]
+    supabase_key = st.secrets["SUPABASE_KEY"]
+    supabase: Client = create_client(supabase_url, supabase_key)
+    db_bereit = True
+except Exception:
+    db_bereit = False
 
 @st.cache_data
 def load_and_clean_data():
@@ -134,89 +144,49 @@ if not df.empty:
                 st.markdown(f"🔗 [Zur Unternehmenswebsite]({website})")
 
     # ---------------------------------------------------------
-    # TAB 2: LIVE-ANALYSE FÜR DRITTE (SaaS)
-    # ---------------------------------------------------------
-    with tab2:
-        st.subheader("🚀 Individuelle Live-Suche & Analyse")
-        st.write("Suche live nach neuen Unternehmen in Osnabrück und prüfe die Passung.")
-        
-        if not api_bereit:
-            st.error("⚠️ Gemini API-Schlüssel fehlt oder ist ungültig.")
+# TAB 2: BEWERBUNGS-PIPELINE (Supabase PostgreSQL)
+# ---------------------------------------------------------
+with tab2:
+    st.subheader("📈 Tracking: Aktuelle Bewerbungen")
+    st.write("Verwalte hier deine offenen Kontakte. Die Daten liegen sicher in deiner Supabase Cloud-Datenbank.")
+    
+    if not db_bereit:
+        st.error("⚠️ Datenbankverbindung fehlt. Prüfe die Supabase Secrets in Streamlit.")
+    else:
+        try:
+            # 1. Daten live aus Supabase abrufen
+            response = supabase.table("pipeline").select("*").execute()
+            df_pipeline = pd.DataFrame(response.data)
             
-        such_branche = st.text_input("Welche Branche suchst du in Osnabrück? (z.B. Kanzlei, Marketing, Logistik)", placeholder="Kanzlei")
-        nutzer_profil = st.text_area("Lebenslauf oder Kurzprofil hier einfügen:", height=200, placeholder="Ich studiere Jura im 5. Semester...")
-        
-        if st.button("Google-Suche & KI-Analyse starten (Top 5)"):
-            if not nutzer_profil or not such_branche:
-                st.warning("Bitte gib eine Branche und ein Profil ein.")
-            elif api_bereit:
-                # 1. GOOGLE PLACES ABFRAGE (NEW API)
-                st.info(f"Suche nach '{such_branche}' in Osnabrück auf Google Maps...")
-                try:
-                    places_key = st.secrets["PLACES_API_KEY"]
-                    url = "https://places.googleapis.com/v1/places:searchText"
-                    
-                    headers = {
-                        "Content-Type": "application/json",
-                        "X-Goog-Api-Key": places_key,
-                        "X-Goog-FieldMask": "places.displayName,places.formattedAddress"
-                    }
-                    
-                    payload = {
-                        "textQuery": f"{such_branche} in Osnabrück"
-                    }
-                    
-                    response = requests.post(url, headers=headers, json=payload).json()
-                    
-                    if "error" in response:
-                        st.error(f"Google API Fehler: {response['error'].get('message', 'Keine Details')}")
-                        results = []
-                    else:
-                        results = response.get('places', [])[:5] 
-                        
-                except Exception as e:
-                    st.error(f"Fehler bei der Anfrage: {e}")
-                    results = []
-
-                if results:
-                    st.success(f"{len(results)} Unternehmen gefunden. Starte KI-Bewertung...")
-                    
-                    # 2. GEMINI BEWERTUNG
-                    model = genai.GenerativeModel('gemini-3.5-flash-lite')
-                    st.markdown("### 🏆 Live-Analyse läuft...")
-                    
-                    ergebnis_liste = []
-                    
-                    for i, place in enumerate(results):
-                        firma = place.get('displayName', {}).get('text', 'Unbekannt')
-                        adresse = place.get('formattedAddress', 'Keine Adresse')
-                        
-                        with st.spinner(f"KI analysiert: {firma} ({i+1}/5)..."):
-                            prompt = f"""
-                            Du bist ein Karriere-Scout. 
-                            Profil des Nutzers: '{nutzer_profil}'
-                            Gefundenes Unternehmen: '{firma}'
-                            
-                            Bewerte in 2-3 Sätzen, ob das Profil passt. Gib am Ende ein Rating von 1/5 bis 5/5 Sternen.
-                            """
-                            
-                            try:
-                                ki_antwort = model.generate_content(prompt).text
-                                st.success(f"**{firma}**: {ki_antwort}")
-                            except Exception as e:
-                                ki_antwort = f"Fehler bei Bewertung: {e}"
-                                st.error(f"❌ Fehler bei {firma}: {e}")
-                                
-                            ergebnis_liste.append({
-                                "Unternehmen": firma,
-                                "Adresse": adresse,
-                                "KI-Analyse": ki_antwort
-                            })
-                            time.sleep(1) 
-                    
-                    st.write("✅ **Alle 5 Unternehmen analysiert!**")
-                    st.dataframe(pd.DataFrame(ergebnis_liste), width='stretch', hide_index=True)
+            # Falls die Tabelle noch komplett leer ist, initialisiere die Spalten
+            if df_pipeline.empty:
+                df_pipeline = pd.DataFrame(columns=["unternehmen", "rolle", "status", "deadline", "notizen"])
+            
+            # 2. Interaktive Tabelle anzeigen
+            edited_df = st.data_editor(
+                df_pipeline, 
+                num_rows="dynamic",
+                use_container_width=True,
+                column_config={
+                    "status": st.column_config.SelectboxColumn(
+                        "Status",
+                        options=["Neu", "In Vorbereitung", "Beworben", "Interview", "Angebot", "Abgesagt"]
+                    )
+                }
+            )
+            
+            # 3. Speichern-Button
+            if st.button("💾 Änderungen in Cloud speichern"):
+                # Entferne leere Zeilen, bei denen kein Unternehmen eingetragen wurde
+                valid_data = edited_df[edited_df["unternehmen"].astype(str).str.strip() != ""]
+                records = valid_data.to_dict(orient="records")
+                
+                if records:
+                    # Upsert überschreibt bestehende Einträge (anhand des Unternehmens-Namens) oder legt neue an
+                    supabase.table("pipeline").upsert(records).execute()
+                    st.success("✅ Pipeline erfolgreich synchronisiert!")
                 else:
-                    st.warning("Keine Unternehmen gefunden. Versuche einen anderen Suchbegriff.")
-else:
-    st.warning("Bitte lade die Datei 'osnabrueck_matched.xlsx' in dein GitHub Repository hoch.")
+                    st.warning("Keine gültigen Daten zum Speichern gefunden.")
+                    
+        except Exception as e:
+            st.error(f"Fehler bei der Datenbank-Aktion: {e}")
