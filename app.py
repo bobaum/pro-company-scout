@@ -2,21 +2,18 @@ import streamlit as st
 import pandas as pd
 import re
 import google.generativeai as genai
-import time
 from supabase import create_client, Client
-import requests
 
-st.set_page_config(page_title="Company Scout Osnabrück", layout="wide")
-st.title("🎯 Company Scout Osnabrück")
+st.set_page_config(page_title="Personal Job Scout", layout="wide")
+st.title("🎯 Personal Job Scout: Bo Baumann")
 
-# --- API Key aus den Streamlit Secrets laden ---
+# --- APIs initialisieren ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     api_bereit = True
 except Exception:
     api_bereit = False
 
-# --- Supabase Datenbank laden ---
 try:
     supabase_url = st.secrets["SUPABASE_URL"]
     supabase_key = st.secrets["SUPABASE_KEY"]
@@ -25,12 +22,12 @@ try:
 except Exception:
     db_bereit = False
 
+# --- Daten laden für Tab 1 ---
 @st.cache_data
 def load_and_clean_data():
     try:
         df = pd.read_excel("osnabrueck_matched.xlsx")
     except Exception as e:
-        st.error(f"Excel-Datei konnte nicht geladen werden: {e}")
         return pd.DataFrame()
 
     def clean_rating(val):
@@ -49,102 +46,32 @@ def load_and_clean_data():
         if "nein" in val or "gering" in val: return "Nein"
         return "Initiativ"
 
-    def clean_kategorie(val):
-        val = str(val).lower()
-        if "consulting" in val or "beratung" in val: return "Consulting & Beratung"
-        if "it" in val or "software" in val or "system" in val or "cloud" in val: return "IT & Tech"
-        if "logistik" in val or "transport" in val or "spedition" in val: return "Logistik & SCM"
-        if "industrie" in val or "produktion" in val or "fertigung" in val: return "Industrie"
-        if "holding" in val or "finanz" in val: return "Finance & Holding"
-        return "Wirtschaft & Sonstiges"
-
     if not df.empty:
         df["Match-Rating"] = df["Match-Rating"].apply(clean_rating)
         df["Einstiegschancen"] = df["Einstiegschancen"].apply(clean_chancen)
-        df["Kategorie"] = df["Kategorie"].apply(clean_kategorie)
     return df
 
 df = load_and_clean_data()
 
-if not df.empty:
-    tab1, tab2 = st.tabs(["📊 Datenbank (PMO & IT)", "🤖 Neue Live-Analyse (SaaS)"])
-    
-    # ---------------------------------------------------------
-    # TAB 1: DEINE BESTEHENDE DATENBANK
-    # ---------------------------------------------------------
-    with tab1:
+# --- Drei personalisierte Tabs ---
+tab1, tab2, tab3 = st.tabs(["📊 Datenbank", "📈 Meine Pipeline", "🧠 Skill-Gap Analyse"])
+
+# ---------------------------------------------------------
+# TAB 1: DATENBANK
+# ---------------------------------------------------------
+with tab1:
+    if not df.empty:
         st.markdown("Deine bereinigte Übersicht für PMO, IT-Projektkoordination und Consulting.")
-        
-        st.sidebar.header("⚙️ Filter (für Tab 1)")
-        kat_auswahl = st.sidebar.multiselect("Große Branchen:", df["Kategorie"].unique(), default=df["Kategorie"].unique())
-        such_auswahl = st.sidebar.multiselect("Suchbegriff (Google):", df["Suchbegriff"].unique(), default=df["Suchbegriff"].unique())
-        rating_auswahl = st.sidebar.slider("Min. Match-Rating (Sterne):", 1, 5, 3)
-        chancen_auswahl = st.sidebar.multiselect("Einstiegschancen:", df["Einstiegschancen"].unique(), default=["Ja", "Initiativ"])
-        
-        df_filtered = df[
-            (df["Kategorie"].isin(kat_auswahl)) & 
-            (df["Suchbegriff"].isin(such_auswahl)) &
-            (df["Match-Rating"] >= rating_auswahl) &
-            (df["Einstiegschancen"].isin(chancen_auswahl))
-        ]
-        
-        search = st.text_input("🔍 Freitext-Suche (Namen, Begründung):")
-        if search:
-            df_filtered = df_filtered[df_filtered.astype(str).apply(lambda x: x.str.contains(search, case=False)).any(axis=1)]
-
-        sortierung = st.selectbox(
-            "🔽 Ergebnisse sortieren nach:",
-            ["Match-Rating (Höchste zuerst)", "Match-Rating (Niedrigste zuerst)", "Unternehmensname (A-Z)"]
-        )
-        
-        if sortierung == "Match-Rating (Höchste zuerst)":
-            df_filtered = df_filtered.sort_values(by="Match-Rating", ascending=False)
-        elif sortierung == "Match-Rating (Niedrigste zuerst)":
-            df_filtered = df_filtered.sort_values(by="Match-Rating", ascending=True)
-        elif sortierung == "Unternehmensname (A-Z)":
-            df_filtered = df_filtered.sort_values(by="Unternehmensname", ascending=True)
-
-        st.metric("Gefundene Unternehmen", len(df_filtered))
-        
-        st.markdown("### 📊 Analyse der Treffer")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Verteilung der Sterne-Ratings**")
-            rating_counts = df_filtered["Match-Rating"].value_counts().sort_index()
-            st.bar_chart(rating_counts)
-            
-        with col2:
-            st.write("**Verteilung nach Branchen**")
-            kat_counts = df_filtered["Kategorie"].value_counts()
-            st.bar_chart(kat_counts)
+        rating_auswahl = st.slider("Min. Match-Rating (Sterne):", 1, 5, 3)
+        df_filtered = df[df["Match-Rating"] >= rating_auswahl]
         
         cols_to_drop = [col for col in ["Begründung", "Adresse"] if col in df_filtered.columns]
-        
-        st.dataframe(
-            df_filtered.drop(columns=cols_to_drop),
-            width='stretch',
-            hide_index=True,
-            column_config={
-                "Match-Rating": st.column_config.NumberColumn("Rating", format="%d ⭐"),
-                "Website": st.column_config.LinkColumn("Website")
-            }
-        )
-        
-        st.markdown("---")
-        st.subheader("📝 Detailansicht & KI-Bewertungen")
-        for index, row in df_filtered.iterrows():
-            with st.expander(f"🏢 {row['Unternehmensname']} | Rating: {row['Match-Rating']} ⭐ | Chancen: {row['Einstiegschancen']}"):
-                was_sie_machen = row['Was sie machen'] if 'Was sie machen' in row else 'Keine Info'
-                begruendung = row['Begründung'] if 'Begründung' in row else 'Keine Info'
-                website = row['Website'] if 'Website' in row else '#'
-                
-                st.write(f"**Was sie machen:** {was_sie_machen}")
-                st.write(f"**KI-Begründung:** {begruendung}")
-                st.markdown(f"🔗 [Zur Unternehmenswebsite]({website})")
+        st.dataframe(df_filtered.drop(columns=cols_to_drop), width='stretch', hide_index=True)
+    else:
+        st.warning("Bitte lade die Datei 'osnabrueck_matched.xlsx' hoch.")
 
-    # ---------------------------------------------------------
-# TAB 2: BEWERBUNGS-PIPELINE (Supabase PostgreSQL)
+# ---------------------------------------------------------
+# TAB 2: BEWERBUNGS-PIPELINE (Supabase)
 # ---------------------------------------------------------
 with tab2:
     st.subheader("📈 Tracking: Aktuelle Bewerbungen")
@@ -158,15 +85,15 @@ with tab2:
             response = supabase.table("pipeline").select("*").execute()
             df_pipeline = pd.DataFrame(response.data)
             
-            # Falls die Tabelle noch komplett leer ist, initialisiere die Spalten
+            # Falls die Tabelle noch komplett leer ist
             if df_pipeline.empty:
                 df_pipeline = pd.DataFrame(columns=["unternehmen", "rolle", "status", "deadline", "notizen"])
             
-            # 2. Interaktive Tabelle anzeigen
+            # 2. Interaktive Tabelle anzeigen (width statt use_container_width)
             edited_df = st.data_editor(
                 df_pipeline, 
                 num_rows="dynamic",
-                use_container_width="stretch",
+                width="stretch",
                 column_config={
                     "status": st.column_config.SelectboxColumn(
                         "Status",
@@ -177,12 +104,10 @@ with tab2:
             
             # 3. Speichern-Button
             if st.button("💾 Änderungen in Cloud speichern"):
-                # Entferne leere Zeilen, bei denen kein Unternehmen eingetragen wurde
                 valid_data = edited_df[edited_df["unternehmen"].astype(str).str.strip() != ""]
                 records = valid_data.to_dict(orient="records")
                 
                 if records:
-                    # Upsert überschreibt bestehende Einträge (anhand des Unternehmens-Namens) oder legt neue an
                     supabase.table("pipeline").upsert(records).execute()
                     st.success("✅ Pipeline erfolgreich synchronisiert!")
                 else:
@@ -190,3 +115,47 @@ with tab2:
                     
         except Exception as e:
             st.error(f"Fehler bei der Datenbank-Aktion: {e}")
+
+# ---------------------------------------------------------
+# TAB 3: SKILL-GAP & BEWERBUNGS-HELFER
+# ---------------------------------------------------------
+with tab3:
+    st.subheader("🧠 KI Skill-Gap Analyse")
+    st.write("Vergleicht dein Profil mit den Anforderungen einer spezifischen Firma oder Stellenausschreibung.")
+    
+    if not api_bereit:
+        st.error("⚠️ Gemini API-Schlüssel fehlt.")
+        
+    ziel_unternehmen = st.text_input("Für welches Unternehmen möchtest du die Analyse starten?", placeholder="z.B. KPMG - Praktikum IT Consulting")
+    stellen_details = st.text_area("Optional: Füge hier Stichpunkte aus der Stellenanzeige ein:", height=100)
+    
+    if st.button("Skill-Gap analysieren"):
+        if not ziel_unternehmen:
+            st.warning("Bitte gib ein Ziel-Unternehmen ein.")
+        else:
+            with st.spinner("Gemini analysiert dein Profil..."):
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                prompt = f"""
+                Du bist ein technischer Karriere-Scout.
+                
+                Profil des Bewerbers (Bo Baumann): 
+                - Studium: Bachelor Wirtschaftsinformatik (3. Semester)
+                - Praktische Erfahrung: Minijob im internen IT-Support (Infrastruktur-Administration, Hardware-Konfiguration)
+                - Ziel: Praktikum/Werkstudent im Bereich IT-Consulting, PMO oder Cloud Services (Perspektive: späteres Auslandspraktikum in Dublin).
+                
+                Ziel-Unternehmen & Rolle: '{ziel_unternehmen}'
+                Details zur Stelle: '{stellen_details}'
+                
+                Führe eine prägnante Skill-Gap-Analyse durch. Strukturiere die Antwort in diese 3 Bereiche (nutze Bulletpoints):
+                1. **Matching Hard- & Soft-Skills:** Was bringt Bo durch sein Studium und den IT-Support bereits perfekt für diese Rolle mit?
+                2. **Der Skill-Gap:** Welche Technologien oder Soft-Skills fehlen ihm für diese konkrete Rolle wahrscheinlich noch?
+                3. **Handlungsempfehlung:** Wie kann er diese Lücke im Anschreiben strategisch kaschieren oder in den nächsten Wochen gezielt schließen?
+                """
+                
+                try:
+                    antwort = model.generate_content(prompt).text
+                    st.success("✅ Analyse abgeschlossen")
+                    st.markdown(antwort)
+                except Exception as e:
+                    st.error(f"Fehler bei der KI-Abfrage: {e}")
