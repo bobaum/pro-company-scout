@@ -4,3 +4,4 @@ openpyxl
 google-generativeai
 requests
 supabase
+PyPDF2
