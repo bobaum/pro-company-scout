@@ -1,7 +1,6 @@
 streamlit
 pandas
 openpyxl
-google-generativeai
-requests
+google-genairequests
 supabase
 PyPDF2
