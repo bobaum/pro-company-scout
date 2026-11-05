@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import re
+import requests
 import google.generativeai as genai
 from supabase import create_client, Client
 import PyPDF2
@@ -14,6 +15,12 @@ try:
     api_bereit = True
 except Exception:
     api_bereit = False
+
+try:
+    places_api_key = st.secrets["PLACES_API_KEY"]
+    places_bereit = True
+except Exception:
+    places_bereit = False
 
 try:
     supabase_url = st.secrets["SUPABASE_URL"]
@@ -54,8 +61,8 @@ def load_and_clean_data():
 
 df = load_and_clean_data()
 
-# --- Vier personalisierte Tabs ---
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Datenbank", "📈 Meine Pipeline", "🧠 Skill-Gap Analyse", "👤 Mein Profil"])
+# --- Fünf personalisierte Tabs ---
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Datenbank", "📈 Meine Pipeline", "🧠 Skill-Gap Analyse", "👤 Mein Profil", "🌍 Live Company Scout"])
 
 # ---------------------------------------------------------
 # TAB 1: DATENBANK
@@ -108,18 +115,16 @@ with tab2:
 # ---------------------------------------------------------
 with tab3:
     st.subheader("🧠 KI Skill-Gap Analyse")
-    st.write("Vergleicht dein Profil dynamisch mit einer Stellenausschreibung.")
     
     if not api_bereit:
         st.error("⚠️ Gemini API-Schlüssel fehlt.")
     elif not db_bereit:
         st.error("⚠️ Datenbankverbindung fehlt.")
     else:
-        # Profil live aus der Datenbank laden
         profil_response = supabase.table("profil").select("*").eq("id", 1).execute()
         
         if not profil_response.data or not profil_response.data[0].get("lebenslauf"):
-            st.warning("⚠️ Bitte hinterlege zuerst deinen Lebenslauf im Tab '👤 Mein Profil', damit die KI dich analysieren kann.")
+            st.warning("⚠️ Bitte hinterlege zuerst deinen Lebenslauf im Tab '👤 Mein Profil'.")
         else:
             mein_profil = profil_response.data[0]
             
@@ -144,12 +149,11 @@ with tab3:
                         Ziel-Unternehmen & Rolle: '{ziel_unternehmen}'
                         Details zur Stelle: '{stellen_details}'
                         
-                        Führe eine prägnante Skill-Gap-Analyse durch. Strukturiere die Antwort in diese 3 Bereiche (nutze Bulletpoints):
-                        1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber durch seinen Lebenslauf bereits perfekt für diese Rolle mit?
-                        2. **Der Skill-Gap:** Welche Technologien oder Anforderungen fehlen ihm für diese konkrete Rolle wahrscheinlich noch?
-                        3. **Handlungsempfehlung:** Wie kann er diese Lücke im Anschreiben strategisch kaschieren oder durch seine bestehenden Erfahrungen ausgleichen?
+                        Führe eine prägnante Skill-Gap-Analyse durch (Nutze Bulletpoints):
+                        1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber perfekt für diese Rolle mit?
+                        2. **Der Skill-Gap:** Welche Technologien/Anforderungen fehlen ihm noch?
+                        3. **Handlungsempfehlung:** Wie kann er diese Lücke im Anschreiben strategisch kaschieren?
                         """
-                        
                         try:
                             antwort = model.generate_content(prompt).text
                             st.success("✅ Analyse abgeschlossen")
@@ -158,20 +162,17 @@ with tab3:
                             st.error(f"Fehler bei der KI-Abfrage: {e}")
 
 # ---------------------------------------------------------
-# TAB 4: MEIN PROFIL (PDF-Upload & Dynamischer Lebenslauf)
+# TAB 4: MEIN PROFIL
 # ---------------------------------------------------------
 with tab4:
     st.subheader("👤 Mein Profil & Lebenslauf")
-    st.write("Lade deinen Harvard-Lebenslauf als PDF hoch oder füge den Text manuell ein. Die KI nutzt diese Daten für alle Analysen.")
     
     if db_bereit:
-        # Aktuelles Profil aus Supabase laden
         profil_response = supabase.table("profil").select("*").eq("id", 1).execute()
         current_cv = profil_response.data[0].get("lebenslauf", "") if profil_response.data else ""
         current_skills = profil_response.data[0].get("skills", "") if profil_response.data else ""
         current_ziele = profil_response.data[0].get("ziele", "") if profil_response.data else ""
         
-        # --- NEU: PDF Upload ---
         uploaded_file = st.file_uploader("📄 Lebenslauf als PDF hochladen (optional)", type="pdf")
         if uploaded_file is not None:
             try:
@@ -179,28 +180,76 @@ with tab4:
                 extracted_text = ""
                 for page in pdf_reader.pages:
                     extracted_text += page.extract_text() + "\n"
-                
                 if extracted_text.strip():
                     current_cv = extracted_text
-                    st.success("✅ PDF erfolgreich ausgelesen! Du kannst den Text unten prüfen und speichern.")
-                else:
-                    st.warning("Das PDF scheint leer zu sein oder besteht nur aus Bildern (nicht auslesbar).")
+                    st.success("✅ PDF erfolgreich ausgelesen!")
             except Exception as e:
                 st.error(f"Fehler beim Lesen des PDFs: {e}")
         
-        # --- Profil-Formular ---
         with st.form("profil_form"):
             input_cv = st.text_area("📄 Dein Lebenslauf-Text:", value=current_cv, height=300)
-            input_skills = st.text_input("🛠️ Zusätzliche Tech- & Soft-Skills (Kommasepariert):", value=current_skills, placeholder="z.B. Python, Streamlit, Supabase")
-            input_ziele = st.text_input("🎯 Karriereziele (Für die KI als Kontext):", value=current_ziele, placeholder="z.B. IT-Consulting Praktikum in Dublin")
+            input_skills = st.text_input("🛠️ Zusätzliche Tech- & Soft-Skills:", value=current_skills, placeholder="z.B. Python, Streamlit, Supabase")
+            input_ziele = st.text_input("🎯 Karriereziele:", value=current_ziele, placeholder="z.B. IT-Consulting Praktikum in Dublin")
             
             submitted = st.form_submit_button("💾 Profil in Cloud speichern")
             if submitted:
-                profil_data = {
-                    "id": 1,
-                    "lebenslauf": input_cv,
-                    "skills": input_skills,
-                    "ziele": input_ziele
-                }
+                profil_data = {"id": 1, "lebenslauf": input_cv, "skills": input_skills, "ziele": input_ziele}
                 supabase.table("profil").upsert(profil_data).execute()
                 st.success("✅ Dein Profil wurde erfolgreich aktualisiert!")
+
+# ---------------------------------------------------------
+# TAB 5: LIVE COMPANY SCOUT
+# ---------------------------------------------------------
+with tab5:
+    st.subheader("🌍 Live Company Scout")
+    st.write("Suche gezielt nach spannenden Unternehmen für Initiativbewerbungen und füge sie direkt deiner Pipeline hinzu.")
+    
+    if not places_bereit:
+        st.error("⚠️ PLACES_API_KEY fehlt in den Streamlit Secrets.")
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            such_branche = st.text_input("Branche / Rolle:", placeholder="z.B. IT Consulting, PMO")
+        with col2:
+            such_ort = st.text_input("Stadt / Region:", placeholder="z.B. Dublin, Osnabrück")
+            
+        if st.button("🚀 Unternehmen suchen"):
+            if such_branche and such_ort:
+                with st.spinner(f"Suche nach '{such_branche}' in '{such_ort}'..."):
+                    query = f"{such_branche} in {such_ort}"
+                    url = f"https://maps.googleapis.com/maps/api/place/textsearch/json?query={query}&key={places_api_key}"
+                    
+                    try:
+                        res = requests.get(url).json()
+                        if "results" in res and res["results"]:
+                            treffer = res["results"][:15] # Zeige die Top 15 an
+                            st.success(f"✅ {len(treffer)} Unternehmen gefunden!")
+                            
+                            for place in treffer:
+                                name = place.get("name")
+                                adresse = place.get("formatted_address", "Keine Adresse hinterlegt")
+                                rating = place.get("rating", "Keine Bewertung")
+                                place_id = place.get("place_id")
+                                
+                                with st.expander(f"🏢 {name} (⭐ Rating: {rating})"):
+                                    st.write(f"**Adresse:** {adresse}")
+                                    
+                                    # Speichert das Unternehmen direkt in Supabase (Tab 2)
+                                    if st.button(f"➕ {name} zur Pipeline hinzufügen", key=f"btn_{place_id}"):
+                                        if db_bereit:
+                                            new_entry = {
+                                                "unternehmen": name, 
+                                                "rolle": f"Initiativ ({such_branche})", 
+                                                "status": "Neu", 
+                                                "notizen": adresse
+                                            }
+                                            supabase.table("pipeline").insert(new_entry).execute()
+                                            st.success(f"Erfolgreich gespeichert! Du findest {name} jetzt in Tab 2.")
+                                        else:
+                                            st.error("Datenbankverbindung fehlt.")
+                        else:
+                            st.warning("Keine passenden Unternehmen gefunden. Versuche andere Suchbegriffe.")
+                    except Exception as e:
+                        st.error(f"Fehler bei der API-Abfrage: {e}")
+            else:
+                st.warning("Bitte gib sowohl eine Branche als auch einen Ort ein.")
