@@ -160,8 +160,8 @@ if analyze_clicked:
                     """
                     
                     # --- SMART CALL LOGIC ---
-                    # Wir nutzen nur die stabilsten und schnellsten Modelle, um Hänger zu vermeiden
-                    fallback_models = ["gemini-2.0-flash", "gemini-1.5-flash"]
+                    # 3.8 ist wieder im Rennen!
+                    fallback_models = ["gemini-3.8-pro", "gemini-3.8-flash", "gemini-2.0-flash"]
                     max_retries = 3
                     erfolg = False
                     status_placeholder = st.empty()
@@ -189,6 +189,10 @@ if analyze_clicked:
                                         time.sleep(wait_time)
                                     else:
                                         status_placeholder.error(f"⚠️ {model_name} ist überlastet. Wechsle zum Fallback-Modell...")
+                                elif "timed out" in error_msg.lower():
+                                    # NEU: Timeouts werden abgefangen und führen zum sauberen Modell-Wechsel
+                                    status_placeholder.warning(f"⏱️ {model_name} antwortet nicht (Timeout nach 15s). Wechsle zum Fallback...")
+                                    break # Bricht den Retry ab und springt sofort zum nächsten Modell
                                 elif "404" in error_msg:
                                     status_placeholder.warning(f"⚠️ Modell {model_name} noch nicht verfügbar. Wechsle zum Fallback...")
                                     break
@@ -198,9 +202,6 @@ if analyze_clicked:
                                     
                     if not erfolg:
                         st.error("❌ Alle Modelle sind aktuell überlastet. Bitte probiere es in ein paar Minuten erneut.")
-                        
-            except Exception as e:
-                st.error(f"Fehler beim Laden des Profils: {e}")
 
 # --- KI ERGEBNIS ANZEIGEN ---
 if st.session_state.ki_ergebnis:
