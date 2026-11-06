@@ -149,4 +149,57 @@ if analyze_clicked:
                     Extrahierter Text von der Webseite: '{gesammelter_web_text}'
                     
                     Führe eine prägnante Skill-Gap-Analyse durch (Nutze Bulletpoints):
-                    1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber
+                    1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber perfekt für dieses Unternehmen mit?
+                    2. **Der Skill-Gap:** Welche Anforderungen fehlen ihm noch?
+                    3. **Handlungsempfehlung:** Wie kann er diese Lücke bei einer Initiativbewerbung strategisch kaschieren?
+                    """
+                    
+                    # --- SMART CALL LOGIC ---
+                    fallback_models = ["gemini-3.8-pro", "gemini-3.8-flash", "gemini-2.0-flash"]
+                    max_retries = 3
+                    erfolg = False
+                    status_placeholder = st.empty()
+
+                    for model_name in fallback_models:
+                        if erfolg:
+                            break
+                        for attempt in range(max_retries):
+                            try:
+                                response = client.models.generate_content(
+                                    model=model_name,
+                                    contents=prompt,
+                                )
+                                st.session_state.ki_ergebnis = response.text
+                                status_placeholder.empty() 
+                                st.success(f"✅ Analyse mit {model_name} erfolgreich abgeschlossen!")
+                                erfolg = True
+                                break 
+                            except Exception as e:
+                                error_msg = str(e)
+                                if "503" in error_msg or "429" in error_msg:
+                                    if attempt < max_retries - 1:
+                                        wait_time = (2 ** attempt) + random.uniform(0, 1)
+                                        status_placeholder.warning(f"⏳ Server ausgelastet (503). Versuch {attempt+1}... Warte {wait_time:.1f}s")
+                                        time.sleep(wait_time)
+                                    else:
+                                        status_placeholder.error(f"⚠️ {model_name} ist überlastet. Wechsle zum Fallback-Modell...")
+                                elif "timed out" in error_msg.lower():
+                                    status_placeholder.warning(f"⏱️ {model_name} antwortet nicht (Timeout nach 15s). Wechsle zum Fallback...")
+                                    break 
+                                elif "404" in error_msg:
+                                    status_placeholder.warning(f"⚠️ Modell {model_name} noch nicht verfügbar. Wechsle zum Fallback...")
+                                    break
+                                else:
+                                    st.error(f"Unerwarteter Fehler bei der KI-Abfrage: {error_msg}")
+                                    break 
+                                    
+                    if not erfolg:
+                        st.error("❌ Alle Modelle sind aktuell überlastet. Bitte probiere es in ein paar Minuten erneut.")
+                        
+            except Exception as e:
+                st.error(f"Fehler beim Laden des Profils: {e}")
+
+# --- KI ERGEBNIS ANZEIGEN ---
+if st.session_state.ki_ergebnis:
+    with st.container(border=True):
+        st.markdown(st.session_state.ki_ergebnis)
