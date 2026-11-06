@@ -26,7 +26,8 @@ if supabase:
     try:
         # Lerneffekt: Wir rufen die Daten ab und nutzen '.order("id", desc=True)', 
         # damit die Datenbank uns die allerneuesten Firmen automatisch zuerst ausspuckt.
-        response = supabase.table("pipeline").select("*").order("id", desc=True).execute()
+        # Wir sortieren nach dem Erstellungsdatum (created_at), um die neuesten Entdeckungen zu finden
+        response = supabase.table("pipeline").select("*").order("created_at", desc=True).execute()
         df = pd.DataFrame(response.data)
         
         if not df.empty:
