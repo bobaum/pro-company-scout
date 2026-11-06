@@ -3,6 +3,7 @@ from google import genai
 from supabase import create_client
 import time
 import random
+import requests # NEU: Für den Web-Scraper
 
 st.set_page_config(page_title="KI-Analyse", page_icon="🧠", layout="wide")
 st.title("🧠 KI Skill-Gap Analyse")
@@ -24,11 +25,13 @@ try:
 except Exception:
     api_bereit = False
 
-# --- DER TRESOR (Gegen das Verschwinden beim Tab-Wechsel) ---
+# --- DER TRESOR (State Management) ---
 if "saved_ziel" not in st.session_state:
     st.session_state.saved_ziel = ""
 if "saved_details" not in st.session_state:
     st.session_state.saved_details = ""
+if "saved_url" not in st.session_state: # NEU: URL im Tresor
+    st.session_state.saved_url = ""
 if "ki_ergebnis" not in st.session_state:
     st.session_state.ki_ergebnis = ""
 
@@ -36,14 +39,15 @@ if "ki_ergebnis" not in st.session_state:
 if st.session_state.get("analyze_company_name"):
     st.session_state.saved_ziel = st.session_state.analyze_company_name
     st.session_state.saved_details = st.session_state.analyze_company_details
+    st.session_state.saved_url = "" 
     st.session_state.ki_ergebnis = "" 
     st.session_state.analyze_company_name = ""
     st.session_state.analyze_company_details = ""
 
-# Manuelles Tippen sofort sichern
 def sync_inputs():
     st.session_state.saved_ziel = st.session_state.widget_ziel
     st.session_state.saved_details = st.session_state.widget_details
+    st.session_state.saved_url = st.session_state.widget_url # NEU
     st.session_state.ki_ergebnis = "" 
 
 if st.session_state.saved_ziel:
@@ -56,6 +60,16 @@ ziel_unternehmen = st.text_input(
     key="widget_ziel", 
     on_change=sync_inputs
 )
+
+# NEU: Das URL Eingabefeld
+unternehmens_url = st.text_input(
+    "Webseite (URL) des Unternehmens (optional für bessere KI-Analyse):", 
+    value=st.session_state.saved_url,
+    key="widget_url",
+    placeholder="z.B. https://www.firma.de",
+    on_change=sync_inputs
+)
+
 stellen_details = st.text_area(
     "Details zum Unternehmen / zur Stelle:", 
     value=st.session_state.saved_details, 
@@ -87,7 +101,7 @@ if add_to_pipeline_clicked:
         except Exception as e:
             st.error(f"Fehler beim Speichern: {e}")
 
-# 2. Logik: KI Analyse starten (mit Resilienz & Fallback)
+# 2. Logik: KI Analyse starten
 if analyze_clicked:
     if not api_bereit:
         st.error("⚠️ Gemini API-Schlüssel fehlt.")
@@ -96,8 +110,22 @@ if analyze_clicked:
     elif not ziel_unternehmen:
         st.warning("Bitte gib ein Ziel-Unternehmen ein.")
     else:
-        with st.spinner("Gemini analysiert dein Profil... (Bitte bleibe kurz auf dieser Seite)"):
+        with st.spinner("Sammle Daten und analysiere dein Profil..."):
             try:
+                # --- NEU: Web-Scraper Logik (Jina Reader) ---
+                gesammelter_web_text = ""
+                if unternehmens_url:
+                    st.toast("Lese Webseite aus...", icon="🌐")
+                    try:
+                        # Wir setzen einfach r.jina.ai vor die URL!
+                        r = requests.get(f"https://r.jina.ai/{unternehmens_url}", timeout=10)
+                        if r.status_code == 200:
+                            # Wir nehmen max 5000 Zeichen, um Token-Limits zu schonen (FinOps)
+                            gesammelter_web_text = r.text[:5000] 
+                            st.toast("Webseite erfolgreich gelesen!", icon="✅")
+                    except:
+                        st.warning("Konnte Webseite nicht auslesen. Mache ohne weiter.")
+
                 profil_response = supabase.table("profil").select("*").eq("id", 1).execute()
                 
                 if not profil_response.data or not profil_response.data[0].get("lebenslauf"):
@@ -114,7 +142,8 @@ if analyze_clicked:
                     Karriereziele: {mein_profil.get('ziele', 'Nicht angegeben')}
                     
                     Ziel-Unternehmen & Rolle: '{ziel_unternehmen}'
-                    Details: '{stellen_details}'
+                    Manuelle Details: '{stellen_details}'
+                    Extrahierter Text von der Webseite: '{gesammelter_web_text}'
                     
                     Führe eine prägnante Skill-Gap-Analyse durch (Nutze Bulletpoints):
                     1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber perfekt für dieses Unternehmen mit?
@@ -131,31 +160,27 @@ if analyze_clicked:
                     for model_name in fallback_models:
                         if erfolg:
                             break
-                            
                         for attempt in range(max_retries):
                             try:
                                 response = client.models.generate_content(
                                     model=model_name,
                                     contents=prompt,
                                 )
-                                
                                 st.session_state.ki_ergebnis = response.text
                                 status_placeholder.empty() 
                                 st.success(f"✅ Analyse mit {model_name} erfolgreich abgeschlossen!")
                                 erfolg = True
                                 break 
-                                
                             except Exception as e:
                                 error_msg = str(e)
                                 if "503" in error_msg or "429" in error_msg:
                                     if attempt < max_retries - 1:
                                         wait_time = (2 ** attempt) + random.uniform(0, 1)
-                                        status_placeholder.warning(f"⏳ Server ausgelastet (503). Versuch {attempt+1}/{max_retries} für {model_name}... Warte {wait_time:.1f}s")
+                                        status_placeholder.warning(f"⏳ Server ausgelastet (503). Versuch {attempt+1}... Warte {wait_time:.1f}s")
                                         time.sleep(wait_time)
                                     else:
                                         status_placeholder.error(f"⚠️ {model_name} ist überlastet. Wechsle zum Fallback-Modell...")
                                 elif "404" in error_msg:
-                                    # Fängt ab, falls 3.8 in der offiziellen API noch nicht freigeschaltet ist
                                     status_placeholder.warning(f"⚠️ Modell {model_name} noch nicht verfügbar. Wechsle zum Fallback...")
                                     break
                                 else:
