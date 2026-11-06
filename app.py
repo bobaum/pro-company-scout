@@ -3,7 +3,6 @@ import pandas as pd
 from supabase import create_client
 from google import genai
 
-# Die Startseite ist das Aushängeschild der App
 st.set_page_config(page_title="Personal Job Scout", page_icon="🎯", layout="wide")
 
 st.title("🎯 Personal Job Scout: Bo Baumann")
@@ -24,14 +23,12 @@ st.header("📊 Dein Bewerbungs-Funnel")
 
 if supabase:
     try:
-        # Lerneffekt: Wir rufen die Daten ab und nutzen '.order("id", desc=True)', 
-        # damit die Datenbank uns die allerneuesten Firmen automatisch zuerst ausspuckt.
-        # Wir sortieren nach dem Erstellungsdatum (created_at), um die neuesten Entdeckungen zu finden
-        response = supabase.table("pipeline").select("*").order("created_at", desc=True).execute()
+        # Lerneffekt: Wir rufen alles ab (ohne .order) und sortieren clientseitig
+        response = supabase.table("pipeline").select("*").execute()
         df = pd.DataFrame(response.data)
         
         if not df.empty:
-            # Metriken berechnen (Filtern des Pandas DataFrame)
+            # Metriken berechnen
             total = len(df)
             prep = len(df[df["status"] == "In Vorbereitung"])
             applied = len(df[df["status"] == "Beworben"])
@@ -46,10 +43,12 @@ if supabase:
             
             st.divider()
             
-            # Zuletzt hinzugefügt (Vorschau für den Schnellzugriff)
+            # Zuletzt hinzugefügt: Wir drehen den Datensatz mit Pandas um [::-1]
             st.subheader("🕒 Die 5 neuesten Entdeckungen")
+            df_reversed = df.iloc[::-1]
+            
             st.dataframe(
-                df[["unternehmen", "rolle", "status", "notizen"]].head(5), 
+                df_reversed[["unternehmen", "rolle", "status", "notizen"]].head(5), 
                 use_container_width=True, 
                 hide_index=True
             )
@@ -67,14 +66,12 @@ st.divider()
 st.header("⚙️ System-Status")
 status_col1, status_col2, status_col3 = st.columns(3)
 
-# 1. Supabase Check
 with status_col1:
     if supabase:
         st.success("✅ Cloud Datenbank (Supabase): Verbunden")
     else:
         st.error("❌ Cloud Datenbank: Getrennt")
 
-# 2. Gemini Check (Mit dem modernsten genai SDK)
 with status_col2:
     try:
         client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
@@ -82,7 +79,6 @@ with status_col2:
     except Exception:
         st.error("❌ KI Engine: Fehler")
 
-# 3. Places API Check
 with status_col3:
     if st.secrets.get("PLACES_API_KEY"):
         st.success("✅ Live Scout (Google Places): Bereit")
