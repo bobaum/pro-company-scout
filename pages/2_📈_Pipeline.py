@@ -6,6 +6,16 @@ st.set_page_config(page_title="Pipeline", page_icon="📈", layout="wide")
 st.title("📈 Meine Bewerbungs-Pipeline")
 st.markdown("Dein CRM-Board: Verwalte hier deine Favoriten und den Status deiner Initiativbewerbungen.")
 
+# --- SESSION STATE FÜR ERFOLGSMELDUNG (Der UX-Trick) ---
+if "save_success" not in st.session_state:
+    st.session_state.save_success = False
+
+# Zeigt die Meldung NACH dem Neuladen der Seite an
+if st.session_state.save_success:
+    st.toast("✅ Änderungen erfolgreich in der Cloud gespeichert!", icon="💾")
+    st.success("✅ Änderungen erfolgreich gespeichert!")
+    st.session_state.save_success = False # Ticket wieder entwerten
+
 # --- DATENBANK-VERBINDUNG ---
 @st.cache_resource
 def get_db():
@@ -26,15 +36,13 @@ try:
     df_pipeline = pd.DataFrame(response.data)
     
     if df_pipeline.empty:
-        df_pipeline = pd.DataFrame(columns=["id", "unternehmen", "rolle", "status", "deadline", "notizen"])
+        df_pipeline = pd.DataFrame(columns=["id", "unternehmen", "rolle", "status", "deadline", "notizen", "created_at"])
         st.info("Noch keine Unternehmen in der Pipeline. Nutze den Live Scout, um welche hinzuzufügen!")
     else:
-        # SaaS-Style KPIs berechnen
         total_saved = len(df_pipeline)
         active_applications = len(df_pipeline[df_pipeline["status"].isin(["Beworben", "In Vorbereitung", "Interview"])])
         interviews = len(df_pipeline[df_pipeline["status"] == "Interview"])
         
-        # KPI Dashboard rendern
         st.subheader("📊 Pipeline Übersicht")
         col1, col2, col3 = st.columns(3)
         col1.metric("Gespeicherte Favoriten", total_saved)
@@ -43,38 +51,56 @@ try:
         
         st.divider()
         
-        # --- INTERAKTIVE TABELLE (Status-Board) ---
+        # --- INTERAKTIVE TABELLE ---
         st.subheader("📋 Status-Board")
-        
-        # Streamlit Data Editor mit typsicheren Spalten konfigurieren
         edited_df = st.data_editor(
             df_pipeline,
             num_rows="dynamic",
             use_container_width=True,
             hide_index=True,
             column_config={
-                "id": None, # Wir verstecken die Datenbank-ID, da sie für das UI irrelevant ist
+                "id": None, 
+                "created_at": None,
                 "unternehmen": st.column_config.TextColumn("Unternehmen", disabled=True), 
                 "rolle": st.column_config.TextColumn("Rolle / Bereich"),
                 "status": st.column_config.SelectboxColumn(
                     "Aktueller Status",
-                    help="Wähle den aktuellen Stand deiner Bewerbung",
                     options=["Neu", "In Vorbereitung", "Beworben", "Interview", "Angebot", "Abgesagt", "On Hold"],
                     required=True
                 ),
-                "deadline": st.column_config.DateColumn("Deadline / Wiedervorlage"),
+                "deadline": st.column_config.DateColumn("Deadline"),
                 "notizen": st.column_config.TextColumn("Notizen & Adresse")
             }
         )
         
-        # Änderungen in die Cloud pushen
         if st.button("💾 Änderungen in Cloud speichern", type="primary"):
             valid_data = edited_df[edited_df["unternehmen"].astype(str).str.strip() != ""]
             records = valid_data.to_dict(orient="records")
             if records:
                 supabase.table("pipeline").upsert(records).execute()
-                st.success("✅ Pipeline erfolgreich aktualisiert!")
-                st.rerun() # Lädt die Seite kurz neu, um die KPIs oben anzupassen
+                
+                # Ticket in den Tresor legen und Seite neu laden
+                st.session_state.save_success = True
+                st.rerun()
+
+        st.divider()
+        
+        # --- KI-ANALYSE AUS DER PIPELINE STARTEN ---
+        st.subheader("🤖 KI-Analyse für Favoriten")
+        unternehmen_liste = df_pipeline["unternehmen"].tolist()
+        
+        col_auswahl, col_btn = st.columns([3, 1])
+        with col_auswahl:
+            selected_company = st.selectbox("Wähle ein Unternehmen aus deiner Pipeline:", unternehmen_liste)
+        with col_btn:
+            st.write("") 
+            st.write("")
+            if st.button("🚀 KI-Match prüfen"):
+                details = df_pipeline[df_pipeline["unternehmen"] == selected_company]["notizen"].iloc[0]
+                
+                st.session_state.analyze_company_name = selected_company
+                st.session_state.analyze_company_details = details if details else "Aus Pipeline übernommen"
+                st.switch_page("pages/3_🧠_KI_Analyse.py")
 
 except Exception as e:
     st.error(f"Fehler beim Laden der Pipeline: {e}")
