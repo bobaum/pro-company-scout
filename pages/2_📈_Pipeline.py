@@ -130,34 +130,46 @@ try:
 
         st.divider()
         
-        # --- OFFLINE FEATURE: TEMPLATE GENERATOR ---
+# --- OFFLINE FEATURE: TEMPLATE GENERATOR ---
         st.subheader("📝 Anschreiben-Generator (Initiativbewerbung)")
         unternehmen_liste = df_pipeline["unternehmen"].tolist()
         
         if unternehmen_liste:
             selected_company_letter = st.selectbox("Zielunternehmen für das Anschreiben auswählen:", unternehmen_liste, key="letter_select")
             
+            persoenlicher_bezug = st.text_input(
+                "Persönlicher Aufhänger (optional):", 
+                placeholder="z.B. Mein Kommilitone Max hat mir von seinem Praktikum bei euch erzählt."
+            )
+            
             if st.button("⚙️ Textgerüst generieren"):
-                # Unternehmensspezifische Daten abgreifen
+                # Dynamische Rolle aus der Pipeline abgreifen, damit es zum Unternehmen passt
                 company_role = df_pipeline[df_pipeline["unternehmen"] == selected_company_letter]["rolle"].iloc[0]
                 if not company_role or str(company_role).strip() == "":
-                    company_role = "IT-Consulting und Projektmanagement"
+                    company_role = "Ihrer Branche"
+
+                if persoenlicher_bezug:
+                    # Wenn ein Bezug da ist, startet der Satz groß
+                    einleitung = f"{persoenlicher_bezug.strip()} Da Sie aktuell keine exakt passende Stelle ausgeschrieben haben, ergreife ich heute einfach selbst die Initiative und bewerbe mich direkt bei {selected_company_letter}."
+                else:
+                    # Nach "Sehr geehrte..." geht es auf Deutsch klein weiter
+                    einleitung = f"da Sie aktuell keine exakt passende Stelle ausgeschrieben haben, ergreife ich heute einfach selbst die Initiative und bewerbe mich direkt bei {selected_company_letter}."
 
                 template_text = f"""Sehr geehrte Damen und Herren,
 
-auf der Suche nach einem dynamischen und innovationsgetriebenen Umfeld im Bereich {company_role} bin ich auf {selected_company_letter} aufmerksam geworden. Mit meinem klaren Fokus auf die Schnittstelle zwischen Technologie und Wirtschaftsorganisation möchte ich mein Profil proaktiv in Ihr Team einbringen.
+{einleitung}
 
-Als Student der Wirtschaftsinformatik (B.Sc.) an der Hochschule Osnabrück verfüge ich über ein starkes analytisches Fundament. Parallel dazu verantworte ich in meiner aktuellen Praxisrolle das operative IT-Infrastrukturmanagement. Diese Kombination aus strategischem Studium und handfester IT-Operations-Erfahrung ermöglicht es mir, technische Anforderungen nicht nur zu verstehen, sondern zielgerichtet in funktionierende Geschäftsprozesse zu übersetzen.
+Ich studiere Wirtschaftsinformatik an der Hochschule Osnabrück und bringe dadurch ein gutes analytisches Fundament mit. Gleichzeitig arbeite ich bereits nebenbei im operativen IT-Infrastrukturmanagement. Ich kenne also die Praxis, bin es gewohnt Verantwortung zu übernehmen und sorge dafür, dass die Technik im Hintergrund reibungslos läuft.
 
-Mich reizt besonders die Möglichkeit, bei {selected_company_letter} PMO-Strukturen zu unterstützen, IT-Projekte ganzheitlich zu begleiten und mich langfristig im Consulting-Umfeld zu etablieren. Ich arbeite strukturiert, übernehme gerne Verantwortung und behalte auch bei komplexen Rollouts den systemischen Überblick.
+Mein Ziel ist es, in einem spannenden Umfeld wie Ihrem Fuß zu fassen. Ich suche dabei nicht nach einer starren Stellenbeschreibung. Vielmehr möchte ich mein Wissen genau dort einbringen, wo Sie aktuell tatkräftige Unterstützung im Bereich {company_role} gebrauchen können. Ich lerne schnell und packe gerne direkt mit an.
 
-Gerne überzeuge ich Sie in einem persönlichen Gespräch von meiner Motivation und meiner pragmatischen Hands-on-Mentalität. 
+Lassen Sie uns in einem kurzen und unverbindlichen Gespräch herausfinden, ob wir zusammenpassen und was sich in naher Zukunft vielleicht doch möglich machen lässt.
 
-Mit freundlichen Grüßen,
+Mit freundlichen Grüßen
 
 Bo Baumann"""
                 
-                st.info("Dein personalisiertes Grundgerüst. Kopiere den Text und passe ihn für die finale Bewerbung leicht an.")
+                st.info("Das geerdete, menschliche Textgerüst. Keine Floskeln, keine Bindestrich-Sätze, passend zum ausgewählten Unternehmen.")
                 st.text_area("Generiertes Anschreiben:", value=template_text, height=350)
         else:
             st.write("Füge Unternehmen zur Pipeline hinzu, um Anschreiben zu generieren.")
