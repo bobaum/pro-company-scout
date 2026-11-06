@@ -3,7 +3,7 @@ from google import genai
 from supabase import create_client
 import time
 import random
-import requests # NEU: Für den Web-Scraper
+import requests
 
 st.set_page_config(page_title="KI-Analyse", page_icon="🧠", layout="wide")
 st.title("🧠 KI Skill-Gap Analyse")
@@ -20,7 +20,7 @@ def get_db():
 supabase = get_db()
 
 try:
-    # NEU: Fail-Fast Architektur. Wenn Google nach 15 Sekunden nicht antwortet, brechen wir ab!
+    # Fail-Fast Architektur: Wenn Google nach 15 Sekunden nicht antwortet, kappen wir die Leitung!
     client = genai.Client(
         api_key=st.secrets["GEMINI_API_KEY"],
         http_options={'timeout': 15.0}
@@ -34,7 +34,7 @@ if "saved_ziel" not in st.session_state:
     st.session_state.saved_ziel = ""
 if "saved_details" not in st.session_state:
     st.session_state.saved_details = ""
-if "saved_url" not in st.session_state: # NEU: URL im Tresor
+if "saved_url" not in st.session_state:
     st.session_state.saved_url = ""
 if "ki_ergebnis" not in st.session_state:
     st.session_state.ki_ergebnis = ""
@@ -43,19 +43,17 @@ if "ki_ergebnis" not in st.session_state:
 if st.session_state.get("analyze_company_name"):
     st.session_state.saved_ziel = st.session_state.analyze_company_name
     st.session_state.saved_details = st.session_state.analyze_company_details
-    
-    # NEU: URL aus dem Teleport abfangen (oder leer lassen, falls keine da war)
     st.session_state.saved_url = st.session_state.get("analyze_company_url", "")
     
     st.session_state.ki_ergebnis = "" 
     st.session_state.analyze_company_name = ""
     st.session_state.analyze_company_details = ""
-    st.session_state.analyze_company_url = "" # Tresor aufräumen
+    st.session_state.analyze_company_url = ""
 
 def sync_inputs():
     st.session_state.saved_ziel = st.session_state.widget_ziel
     st.session_state.saved_details = st.session_state.widget_details
-    st.session_state.saved_url = st.session_state.widget_url # NEU
+    st.session_state.saved_url = st.session_state.widget_url
     st.session_state.ki_ergebnis = "" 
 
 if st.session_state.saved_ziel:
@@ -69,7 +67,6 @@ ziel_unternehmen = st.text_input(
     on_change=sync_inputs
 )
 
-# NEU: Das URL Eingabefeld
 unternehmens_url = st.text_input(
     "Webseite (URL) des Unternehmens (optional für bessere KI-Analyse):", 
     value=st.session_state.saved_url,
@@ -120,15 +117,13 @@ if analyze_clicked:
     else:
         with st.spinner("Sammle Daten und analysiere dein Profil..."):
             try:
-                # --- NEU: Web-Scraper Logik (Jina Reader) ---
+                # --- Web-Scraper Logik ---
                 gesammelter_web_text = ""
                 if unternehmens_url:
                     st.toast("Lese Webseite aus...", icon="🌐")
                     try:
-                        # Wir setzen einfach r.jina.ai vor die URL!
                         r = requests.get(f"https://r.jina.ai/{unternehmens_url}", timeout=10)
                         if r.status_code == 200:
-                            # Wir nehmen max 5000 Zeichen, um Token-Limits zu schonen (FinOps)
                             gesammelter_web_text = r.text[:5000] 
                             st.toast("Webseite erfolgreich gelesen!", icon="✅")
                     except:
@@ -154,56 +149,4 @@ if analyze_clicked:
                     Extrahierter Text von der Webseite: '{gesammelter_web_text}'
                     
                     Führe eine prägnante Skill-Gap-Analyse durch (Nutze Bulletpoints):
-                    1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber perfekt für dieses Unternehmen mit?
-                    2. **Der Skill-Gap:** Welche Anforderungen fehlen ihm noch?
-                    3. **Handlungsempfehlung:** Wie kann er diese Lücke bei einer Initiativbewerbung strategisch kaschieren?
-                    """
-                    
-                    # --- SMART CALL LOGIC ---
-                    # 3.8 ist wieder im Rennen!
-                    fallback_models = ["gemini-3.8-pro", "gemini-3.8-flash", "gemini-2.0-flash"]
-                    max_retries = 3
-                    erfolg = False
-                    status_placeholder = st.empty()
-
-                    for model_name in fallback_models:
-                        if erfolg:
-                            break
-                        for attempt in range(max_retries):
-                            try:
-                                response = client.models.generate_content(
-                                    model=model_name,
-                                    contents=prompt,
-                                )
-                                st.session_state.ki_ergebnis = response.text
-                                status_placeholder.empty() 
-                                st.success(f"✅ Analyse mit {model_name} erfolgreich abgeschlossen!")
-                                erfolg = True
-                                break 
-                            except Exception as e:
-                                error_msg = str(e)
-                                if "503" in error_msg or "429" in error_msg:
-                                    if attempt < max_retries - 1:
-                                        wait_time = (2 ** attempt) + random.uniform(0, 1)
-                                        status_placeholder.warning(f"⏳ Server ausgelastet (503). Versuch {attempt+1}... Warte {wait_time:.1f}s")
-                                        time.sleep(wait_time)
-                                    else:
-                                        status_placeholder.error(f"⚠️ {model_name} ist überlastet. Wechsle zum Fallback-Modell...")
-                                elif "timed out" in error_msg.lower():
-                                    # NEU: Timeouts werden abgefangen und führen zum sauberen Modell-Wechsel
-                                    status_placeholder.warning(f"⏱️ {model_name} antwortet nicht (Timeout nach 15s). Wechsle zum Fallback...")
-                                    break # Bricht den Retry ab und springt sofort zum nächsten Modell
-                                elif "404" in error_msg:
-                                    status_placeholder.warning(f"⚠️ Modell {model_name} noch nicht verfügbar. Wechsle zum Fallback...")
-                                    break
-                                else:
-                                    st.error(f"Unerwarteter Fehler bei der KI-Abfrage: {error_msg}")
-                                    break 
-                                    
-                    if not erfolg:
-                        st.error("❌ Alle Modelle sind aktuell überlastet. Bitte probiere es in ein paar Minuten erneut.")
-
-# --- KI ERGEBNIS ANZEIGEN ---
-if st.session_state.ki_ergebnis:
-    with st.container(border=True):
-        st.markdown(st.session_state.ki_ergebnis)
+                    1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber
