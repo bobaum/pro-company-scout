@@ -12,7 +12,113 @@ st.markdown("Willkommen in deinem cloudbasierten Karriere-CRM. Hier ist dein akt
 @st.cache_resource
 def get_db():
     try:
+        return create_client(st.secrets["Simport streamlit as st
+import pandas as pd
+from supabase import create_client
+from google import genai
+
+st.set_page_config(page_title="Personal Job Scout", page_icon="🎯", layout="wide")
+
+st.title("🎯 Personal Job Scout: Bo Baumann")
+st.markdown("Willkommen in deinem cloudbasierten Karriere-CRM. Hier ist dein aktueller Bewerbungs-Überblick.")
+
+# --- DATENBANK ---
+@st.cache_resource
+def get_db():
+    try:
         return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+    except Exception:
+        return None
+
+supabase = get_db()
+
+# --- DASHBOARD & FUNNEL ---
+st.header("📊 Dein Bewerbungs-Funnel")
+
+if supabase:
+    try:
+        response = supabase.table("pipeline").select("*").execute()
+        df = pd.DataFrame(response.data)
+        
+        # --- DER "ZERO-DATA STATE" (Wenn noch keine Daten da sind) ---
+        if df.empty:
+            st.info("👋 **Willkommen in deinem neuen Karriere-CRM!** Aktuell ist deine Pipeline noch leer.")
+            
+            # Platzhalter-Metriken, damit es trotzdem nach einem Dashboard aussieht
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Gespeicherte Firmen", "0")
+            col2.metric("In Vorbereitung", "0")
+            col3.metric("Laufende Bewerbungen", "0")
+            col4.metric("Interviews", "0")
+            
+            st.divider()
+            
+            # Ein Call-to-Action (Handlungsaufruf) im leeren Zustand
+            st.markdown("### 🚀 Erste Schritte")
+            st.markdown("1. Wechsle links in den **🌍 Live Scout**, um interessante Arbeitgeber in deiner Region zu finden.")
+            st.markdown("2. Speichere deine Favoriten mit einem Klick in die Pipeline.")
+            st.markdown("3. Lass die **🧠 KI-Analyse** prüfen, wie gut dein Profil passt.")
+            
+        # --- DER "DATA-RICH STATE" (Wenn Firmen vorhanden sind) ---
+        else:
+            total = len(df)
+            prep = len(df[df["status"] == "In Vorbereitung"])
+            applied = len(df[df["status"] == "Beworben"])
+            interviews = len(df[df["status"] == "Interview"])
+            
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Gespeicherte Firmen", total)
+            col2.metric("In Vorbereitung", prep)
+            col3.metric("Laufende Bewerbungen", applied)
+            col4.metric("Interviews", interviews)
+            
+            st.divider()
+            
+            chart_col, list_col = st.columns([1, 1])
+            
+            with chart_col:
+                st.subheader("📈 Verteilung nach Status")
+                # Zählt wie oft welcher Status vorkommt und baut ein Diagramm
+                status_counts = df["status"].value_counts()
+                st.bar_chart(status_counts)
+                
+            with list_col:
+                st.subheader("🕒 Die neuesten Entdeckungen")
+                df_reversed = df.iloc[::-1]
+                st.dataframe(
+                    df_reversed[["unternehmen", "status", "notizen"]].head(5), 
+                    use_container_width=True, 
+                    hide_index=True
+                )
+            
+    except Exception as e:
+        st.error(f"Fehler beim Laden des Dashboards: {e}")
+else:
+    st.error("⚠️ Keine Datenbankverbindung für das Dashboard.")
+
+st.divider()
+
+# --- SYSTEM-STATUS (Management by Exception) ---
+st.header("⚙️ System-Status")
+system_fehler = []
+
+if not supabase:
+    system_fehler.append("❌ Cloud Datenbank (Supabase): Verbindung getrennt")
+
+try:
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+except Exception:
+    system_fehler.append("❌ KI Engine (Gemini API): Fehler oder Key fehlt")
+
+if not st.secrets.get("PLACES_API_KEY"):
+    system_fehler.append("❌ Live Scout (Google Places): API-Key fehlt")
+
+if not system_fehler:
+    st.success("✅ Alle Systeme einsatzbereit (Datenbank, KI & API-Schnittstellen)")
+else:
+    st.error("⚠️ System-Warnung: Folgende Module sind nicht bereit:")
+    for fehler in system_fehler:
+        st.warning(fehler)UPABASE_URL"], st.secrets["SUPABASE_KEY"])
     except Exception:
         return None
 
