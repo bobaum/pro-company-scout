@@ -80,7 +80,7 @@ if st.button("🚀 KI-Analyse starten", type="primary"):
                     """
                     
                     response = client.models.generate_content(
-                        model='gemini-2.0-flash',
+                        model='gemini-3.8-flash',
                         contents=prompt,
                     )
                     antwort = response.text
