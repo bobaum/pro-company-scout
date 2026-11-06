@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-import pandas as pd # NEU: Für die Kartendaten
+import pandas as pd
 from supabase import create_client
 
 st.set_page_config(page_title="Live Scout", page_icon="🌍")
@@ -46,8 +46,8 @@ if st.button("🚀 Unternehmen suchen"):
             headers = {
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": places_api_key,
-                # NEU: places.location wurde zur Maske hinzugefügt für die Map!
-                "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.id,places.location"
+                # NEU: places.websiteUri wurde hinzugefügt!
+                "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.id,places.location,places.websiteUri"
             }
             payload = {"textQuery": f"{such_branche} in {such_ort}"}
             
@@ -70,12 +70,11 @@ if st.button("🚀 Unternehmen suchen"):
     else:
         st.warning("Bitte gib sowohl eine Branche als auch einen Ort ein.")
 
-# 2. Suchergebnisse anzeigen (inklusive interaktiver Karte!)
+# 2. Suchergebnisse anzeigen
 if st.session_state.search_results:
     st.success(f"✅ {len(st.session_state.search_results)} Unternehmen für '{st.session_state.last_search_query}' gefunden!")
     
-    # --- NEU: DIE INTERAKTIVE KARTE ---
-    # Wir filtern die GPS-Daten aus den Google-Ergebnissen
+    # --- DIE INTERAKTIVE KARTE ---
     map_data = []
     for place in st.session_state.search_results:
         loc = place.get("location")
@@ -85,7 +84,6 @@ if st.session_state.search_results:
     if map_data:
         st.subheader("🗺️ Standort-Übersicht")
         df_map = pd.DataFrame(map_data)
-        # Streamlit plottet diese Daten automatisch auf einer interaktiven Map
         st.map(df_map, zoom=12, use_container_width=True)
         st.divider()
 
@@ -94,10 +92,14 @@ if st.session_state.search_results:
         name = place.get("displayName", {}).get("text", "Unbekannt")
         adresse = place.get("formattedAddress", "Keine Adresse hinterlegt")
         place_id = place.get("id")
+        # NEU: Wir greifen die URL aus den Google-Daten ab
+        website_url = place.get("websiteUri", "")
         
         with st.container(border=True):
             st.subheader(f"🏢 {name}")
             st.write(f"📍 {adresse}")
+            if website_url:
+                st.write(f"🌐 [Webseite]({website_url})")
             
             btn_col1, btn_col2 = st.columns(2)
             
@@ -114,4 +116,6 @@ if st.session_state.search_results:
                 if st.button(f"🤖 KI-Match prüfen", key=f"ki_{place_id}", type="primary"):
                     st.session_state.analyze_company_name = name
                     st.session_state.analyze_company_details = f"Adresse: {adresse}\nBranche gesucht: {st.session_state.last_search_query}"
+                    # NEU: URL in den Tresor legen für den Teleport
+                    st.session_state.analyze_company_url = website_url
                     st.switch_page("pages/3_🧠_KI_Analyse.py")
