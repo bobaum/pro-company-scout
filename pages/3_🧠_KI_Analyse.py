@@ -22,26 +22,47 @@ try:
 except Exception:
     api_bereit = False
 
-# --- SESSION STATE & WIDGET SYNC ---
-if "analyze_company_name" in st.session_state and st.session_state.analyze_company_name:
-    st.session_state.ziel_input = st.session_state.analyze_company_name
-    st.session_state.details_input = st.session_state.analyze_company_details
+# --- DER TRESOR (Gegen das Verschwinden beim Tab-Wechsel) ---
+if "saved_ziel" not in st.session_state:
+    st.session_state.saved_ziel = ""
+if "saved_details" not in st.session_state:
+    st.session_state.saved_details = ""
+if "ki_ergebnis" not in st.session_state:
+    st.session_state.ki_ergebnis = ""
+
+# Teleport-Übergabe aus der Suche oder Pipeline abfangen
+if st.session_state.get("analyze_company_name"):
+    st.session_state.saved_ziel = st.session_state.analyze_company_name
+    st.session_state.saved_details = st.session_state.analyze_company_details
+    st.session_state.ki_ergebnis = "" # Altes Ergebnis löschen bei neuer Firma
     st.session_state.analyze_company_name = ""
     st.session_state.analyze_company_details = ""
 
-if "ziel_input" not in st.session_state:
-    st.session_state.ziel_input = ""
-if "details_input" not in st.session_state:
-    st.session_state.details_input = ""
+# Diese Funktion sichert manuelles Tippen sofort im Tresor
+def sync_inputs():
+    st.session_state.saved_ziel = st.session_state.widget_ziel
+    st.session_state.saved_details = st.session_state.widget_details
+    st.session_state.ki_ergebnis = "" # KI-Text löschen, wenn User die Firma ändert
 
-if st.session_state.ziel_input:
-    st.info(f"💡 Aktuelles Ziel-Unternehmen im Fokus: **{st.session_state.ziel_input}**")
+if st.session_state.saved_ziel:
+    st.info(f"💡 Aktuelles Ziel-Unternehmen im Fokus: **{st.session_state.saved_ziel}**")
 
-# --- ANALYSE FORMULAR ---
-ziel_unternehmen = st.text_input("Ziel-Unternehmen:", key="ziel_input")
-stellen_details = st.text_area("Details zum Unternehmen / zur Stelle:", key="details_input", height=100)
+# --- ANALYSE FORMULAR (An den Tresor gekoppelt) ---
+ziel_unternehmen = st.text_input(
+    "Ziel-Unternehmen:", 
+    value=st.session_state.saved_ziel, 
+    key="widget_ziel", 
+    on_change=sync_inputs
+)
+stellen_details = st.text_area(
+    "Details zum Unternehmen / zur Stelle:", 
+    value=st.session_state.saved_details, 
+    key="widget_details", 
+    height=100, 
+    on_change=sync_inputs
+)
 
-# --- NEU: ZWEI BUTTONS NEBENEINANDER ---
+# --- ZWEI BUTTONS NEBENEINANDER ---
 btn_col1, btn_col2 = st.columns(2)
 
 with btn_col1:
@@ -73,7 +94,8 @@ if analyze_clicked:
     elif not ziel_unternehmen:
         st.warning("Bitte gib ein Ziel-Unternehmen ein.")
     else:
-        with st.spinner("Gemini analysiert dein Profil..."):
+        # UX-Hinweis, dass man nicht wegklicken darf
+        with st.spinner("Gemini analysiert dein Profil... (Bitte bleibe kurz auf dieser Seite)"):
             try:
                 profil_response = supabase.table("profil").select("*").eq("id", 1).execute()
                 
@@ -103,12 +125,15 @@ if analyze_clicked:
                         model='gemini-3.8-flash',
                         contents=prompt,
                     )
-                    antwort = response.text
                     
+                    # KI ERGEBNIS DAUERHAFT IM TRESOR SPEICHERN
+                    st.session_state.ki_ergebnis = response.text
                     st.success("✅ Analyse erfolgreich abgeschlossen!")
-                    
-                    with st.container(border=True):
-                        st.markdown(antwort)
                     
             except Exception as e:
                 st.error(f"Fehler bei der KI-Abfrage: {e}")
+
+# --- KI ERGEBNIS ANZEIGEN (Bleibt auch nach Tab-Wechsel sichtbar) ---
+if st.session_state.ki_ergebnis:
+    with st.container(border=True):
+        st.markdown(st.session_state.ki_ergebnis)
