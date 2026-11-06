@@ -38,6 +38,9 @@ try:
         df_pipeline = pd.DataFrame(columns=["id", "unternehmen", "rolle", "status", "deadline", "notizen", "created_at"])
         st.info("Noch keine Unternehmen in der Pipeline. Nutze den Live Scout, um welche hinzuzufügen!")
     else:
+        # NEU: Wir fügen eine temporäre Checkbox-Spalte für das Löschen hinzu
+        df_pipeline["🗑️ Löschen"] = False 
+        
         total_saved = len(df_pipeline)
         active_applications = len(df_pipeline[df_pipeline["status"].isin(["Beworben", "In Vorbereitung", "Interview"])])
         interviews = len(df_pipeline[df_pipeline["status"] == "Interview"])
@@ -50,21 +53,19 @@ try:
         
         st.divider()
         
-        # --- NEU: REPORTING EXPORT (PMO Feature) ---
-        # Wir konvertieren den DataFrame in einen CSV-String (im UTF-8 Format)
+        # --- REPORTING EXPORT (PMO Feature) ---
         @st.cache_data
         def convert_df(df):
-            # Index weglassen, als CSV formatieren
-            return df.to_csv(index=False).encode('utf-8')
+            # Wir entfernen die Lösch-Checkbox, bevor wir das saubere CSV generieren
+            export_df = df.drop(columns=["🗑️ Löschen"], errors='ignore')
+            return export_df.to_csv(index=False).encode('utf-8')
 
         csv = convert_df(df_pipeline)
         
-        # --- KOPFZEILE MIT BUTTONS ---
         header_col, export_col = st.columns([3, 1])
         with header_col:
             st.subheader("📋 Status-Board")
         with export_col:
-            # Download-Button mit dem konvertierten CSV
             st.download_button(
                 label="📥 Pipeline als CSV exportieren",
                 data=csv,
@@ -73,7 +74,7 @@ try:
                 use_container_width=True
             )
 
-        # --- INTERAKTIVE TABELLE ---
+        # --- INTERAKTIVE TABELLE (MIT LÖSCH-FUNKTION) ---
         edited_df = st.data_editor(
             df_pipeline,
             num_rows="dynamic",
@@ -82,6 +83,7 @@ try:
             column_config={
                 "id": None, 
                 "created_at": None,
+                "🗑️ Löschen": st.column_config.CheckboxColumn("Löschen", help="Markieren, um die Firma aus der Cloud zu löschen"),
                 "unternehmen": st.column_config.TextColumn("Unternehmen", disabled=True), 
                 "rolle": st.column_config.TextColumn("Rolle / Bereich"),
                 "status": st.column_config.SelectboxColumn(
@@ -95,12 +97,23 @@ try:
         )
         
         if st.button("💾 Änderungen in Cloud speichern", type="primary"):
-            valid_data = edited_df[edited_df["unternehmen"].astype(str).str.strip() != ""]
+            # 1. LÖSCHEN: Welche Firmen wurden angehakt?
+            to_delete = edited_df[edited_df["🗑️ Löschen"] == True]
+            if not to_delete.empty:
+                ids_to_delete = to_delete["id"].tolist()
+                # Cloud-Befehl zum finalen Löschen
+                supabase.table("pipeline").delete().in_("id", ids_to_delete).execute()
+            
+            # 2. SPEICHERN: Die restlichen Daten ganz normal updaten
+            to_upsert = edited_df[edited_df["🗑️ Löschen"] == False].drop(columns=["🗑️ Löschen"])
+            valid_data = to_upsert[to_upsert["unternehmen"].astype(str).str.strip() != ""]
+            
             records = valid_data.to_dict(orient="records")
             if records:
                 supabase.table("pipeline").upsert(records).execute()
-                st.session_state.save_success = True
-                st.rerun()
+                
+            st.session_state.save_success = True
+            st.rerun()
 
         st.divider()
         
