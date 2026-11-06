@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import pandas as pd # NEU: Für die Kartendaten
 from supabase import create_client
 
 st.set_page_config(page_title="Live Scout", page_icon="🌍")
@@ -21,7 +22,7 @@ if not places_api_key:
     st.error("⚠️ PLACES_API_KEY fehlt in den Streamlit Secrets.")
     st.stop()
 
-# --- SESSION STATE FÜR SUCHERGEBNISSE (Verhindert das Verschwinden) ---
+# --- SESSION STATE FÜR SUCHERGEBNISSE ---
 if "search_results" not in st.session_state:
     st.session_state.search_results = []
 if "last_search_query" not in st.session_state:
@@ -36,7 +37,7 @@ with col2:
 with col3:
     max_ergebnisse = st.slider("Anzahl:", 5, 20, 10, step=5)
 
-# 1. API Aufruf nur ausführen, wenn gesucht wird
+# 1. API Aufruf ausführen
 if st.button("🚀 Unternehmen suchen"):
     if such_branche and such_ort:
         with st.spinner("Suche über Google API (FinOps optimiert)..."):
@@ -45,7 +46,8 @@ if st.button("🚀 Unternehmen suchen"):
             headers = {
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": places_api_key,
-                "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.id"
+                # NEU: places.location wurde zur Maske hinzugefügt für die Map!
+                "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.id,places.location"
             }
             payload = {"textQuery": f"{such_branche} in {such_ort}"}
             
@@ -56,7 +58,6 @@ if st.button("🚀 Unternehmen suchen"):
                 if response.status_code == 200:
                     places = res.get("places", [])
                     if places:
-                        # Ergebnisse im Session State speichern, damit sie beim Neuladen bleiben!
                         st.session_state.search_results = places[:max_ergebnisse]
                         st.session_state.last_search_query = f"{such_branche} in {such_ort}"
                     else:
@@ -69,10 +70,26 @@ if st.button("🚀 Unternehmen suchen"):
     else:
         st.warning("Bitte gib sowohl eine Branche als auch einen Ort ein.")
 
-# 2. Suchergebnisse IMMER anzeigen, wenn welche im Session State liegen
+# 2. Suchergebnisse anzeigen (inklusive interaktiver Karte!)
 if st.session_state.search_results:
     st.success(f"✅ {len(st.session_state.search_results)} Unternehmen für '{st.session_state.last_search_query}' gefunden!")
     
+    # --- NEU: DIE INTERAKTIVE KARTE ---
+    # Wir filtern die GPS-Daten aus den Google-Ergebnissen
+    map_data = []
+    for place in st.session_state.search_results:
+        loc = place.get("location")
+        if loc:
+            map_data.append({"lat": loc.get("latitude"), "lon": loc.get("longitude")})
+            
+    if map_data:
+        st.subheader("🗺️ Standort-Übersicht")
+        df_map = pd.DataFrame(map_data)
+        # Streamlit plottet diese Daten automatisch auf einer interaktiven Map
+        st.map(df_map, zoom=12, use_container_width=True)
+        st.divider()
+
+    # --- DIE LISTENANSICHT ---
     for place in st.session_state.search_results:
         name = place.get("displayName", {}).get("text", "Unbekannt")
         adresse = place.get("formattedAddress", "Keine Adresse hinterlegt")
@@ -85,20 +102,16 @@ if st.session_state.search_results:
             btn_col1, btn_col2 = st.columns(2)
             
             with btn_col1:
-                # Da die Ergebnisse im State liegen, verschwinden sie bei Klick nicht mehr
                 if st.button(f"➕ Zur Pipeline hinzufügen", key=f"pipe_{place_id}"):
                     if supabase:
                         new_entry = {"unternehmen": name, "rolle": "Initiativ", "status": "Neu", "notizen": adresse}
                         supabase.table("pipeline").insert(new_entry).execute()
-                        st.success(f"✅ {name} im Dashboard gespeichert!")
+                        st.toast(f"✅ {name} im Dashboard gespeichert!", icon="💾")
                     else:
                         st.error("Datenbankverbindung fehlt.")
             
             with btn_col2:
-                # Wenn KI-Match geklickt wird, Daten speichern und AUTOMATISCH die Seite wechseln
                 if st.button(f"🤖 KI-Match prüfen", key=f"ki_{place_id}", type="primary"):
                     st.session_state.analyze_company_name = name
                     st.session_state.analyze_company_details = f"Adresse: {adresse}\nBranche gesucht: {st.session_state.last_search_query}"
-                    
-                    # Automatischer Seitenwechsel zu Tab 3 (Teleport)
                     st.switch_page("pages/3_🧠_KI_Analyse.py")
