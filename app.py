@@ -64,23 +64,28 @@ st.divider()
 
 # --- SYSTEM-STATUS (Die technische Überwachung) ---
 st.header("⚙️ System-Status")
-status_col1, status_col2, status_col3 = st.columns(3)
 
-with status_col1:
-    if supabase:
-        st.success("✅ Cloud Datenbank (Supabase): Verbunden")
-    else:
-        st.error("❌ Cloud Datenbank: Getrennt")
+system_fehler = []
 
-with status_col2:
-    try:
-        client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-        st.success("✅ KI Engine (Gemini API v1): Bereit")
-    except Exception:
-        st.error("❌ KI Engine: Fehler")
+# 1. Supabase Check
+if not supabase:
+    system_fehler.append("❌ Cloud Datenbank (Supabase): Verbindung getrennt")
 
-with status_col3:
-    if st.secrets.get("PLACES_API_KEY"):
-        st.success("✅ Live Scout (Google Places): Bereit")
-    else:
+# 2. Gemini Check
+try:
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+except Exception:
+    system_fehler.append("❌ KI Engine (Gemini API): Fehler oder Key fehlt")
+
+# 3. Places API Check
+if not st.secrets.get("PLACES_API_KEY"):
+    system_fehler.append("❌ Live Scout (Google Places): API-Key fehlt")
+
+# Ausgabe: Nur meckern, wenn etwas kaputt ist
+if not system_fehler:
+    st.success("✅ Alle Systeme einsatzbereit (Datenbank, KI & API-Schnittstellen)")
+else:
+    st.error("⚠️ System-Warnung: Folgende Module sind nicht bereit:")
+    for fehler in system_fehler:
+        st.warning(fehler)
         st.error("❌ Live Scout: API-Key fehlt")
