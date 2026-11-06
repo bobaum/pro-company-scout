@@ -20,7 +20,11 @@ def get_db():
 supabase = get_db()
 
 try:
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    # NEU: Fail-Fast Architektur. Wenn Google nach 15 Sekunden nicht antwortet, brechen wir ab!
+    client = genai.Client(
+        api_key=st.secrets["GEMINI_API_KEY"],
+        http_options={'timeout': 15.0}
+    )
     api_bereit = True
 except Exception:
     api_bereit = False
@@ -156,7 +160,8 @@ if analyze_clicked:
                     """
                     
                     # --- SMART CALL LOGIC ---
-                    fallback_models = ["gemini-3.8-pro", "gemini-3.8-flash", "gemini-2.0-flash"]
+                    # Wir nutzen nur die stabilsten und schnellsten Modelle, um Hänger zu vermeiden
+                    fallback_models = ["gemini-2.0-flash", "gemini-1.5-flash"]
                     max_retries = 3
                     erfolg = False
                     status_placeholder = st.empty()
