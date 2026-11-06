@@ -35,16 +35,27 @@ try:
     df_pipeline = pd.DataFrame(response.data)
     
     if df_pipeline.empty:
-        # Fallback-Spalten, falls die DB komplett leer ist
         df_pipeline = pd.DataFrame(columns=["unternehmen", "rolle", "status", "deadline", "notizen", "created_at"])
         st.info("Noch keine Unternehmen in der Pipeline. Nutze den Live Scout, um welche hinzuzufügen!")
     else:
-        # Wir fügen die Lösch-Checkbox hinzu
+        # VISUAL HYGIENE: Wir konvertieren alte Text-Stati in das neue Ampelsystem
+        status_mapping = {
+            "Neu": "🆕 Neu", 
+            "In Vorbereitung": "🟡 In Vorbereitung", 
+            "Beworben": "📤 Beworben", 
+            "Interview": "🟢 Interview", 
+            "Angebot": "🎉 Angebot", 
+            "Abgesagt": "🔴 Abgesagt", 
+            "On Hold": "⏸️ On Hold"
+        }
+        # Wendet das Mapping nur an, wenn der alte Status gefunden wird (schützt vor doppelter Ausführung)
+        df_pipeline["status"] = df_pipeline["status"].apply(lambda x: status_mapping.get(x, x))
+        
         df_pipeline["🗑️ Löschen"] = False 
         
         total_saved = len(df_pipeline)
-        active_applications = len(df_pipeline[df_pipeline["status"].isin(["Beworben", "In Vorbereitung", "Interview"])])
-        interviews = len(df_pipeline[df_pipeline["status"] == "Interview"])
+        active_applications = len(df_pipeline[df_pipeline["status"].isin(["📤 Beworben", "🟡 In Vorbereitung", "🟢 Interview"])])
+        interviews = len(df_pipeline[df_pipeline["status"] == "🟢 Interview"])
         
         st.subheader("📊 Pipeline Übersicht")
         col1, col2, col3 = st.columns(3)
@@ -74,8 +85,7 @@ try:
                 use_container_width=True
             )
 
-        # --- INTERAKTIVE TABELLE (MIT ROBUSTER LÖSCH-FUNKTION) ---
-        # Wir konfigurieren die Spalten dynamisch. Wenn 'id' nicht existiert, stürzt es nicht ab.
+        # --- INTERAKTIVE TABELLE ---
         column_config = {
             "id": None, 
             "created_at": None,
@@ -83,8 +93,8 @@ try:
             "unternehmen": st.column_config.TextColumn("Unternehmen", disabled=True), 
             "rolle": st.column_config.TextColumn("Rolle / Bereich"),
             "status": st.column_config.SelectboxColumn(
-                "Aktueller Status",
-                options=["Neu", "In Vorbereitung", "Beworben", "Interview", "Angebot", "Abgesagt", "On Hold"],
+                "Ampel-Status",
+                options=list(status_mapping.values()), # Nutzt die neuen Emoji-Werte
                 required=True
             ),
             "deadline": st.column_config.DateColumn("Deadline"),
@@ -100,49 +110,57 @@ try:
         )
         
         if st.button("💾 Änderungen in Cloud speichern", type="primary"):
-            # 1. LÖSCHEN (Robust via Firmenname)
             to_delete = edited_df[edited_df["🗑️ Löschen"] == True]
             if not to_delete.empty:
                 unternehmen_to_delete = to_delete["unternehmen"].tolist()
-                # Wir löschen in Supabase alle Zeilen, bei denen der Name übereinstimmt
                 supabase.table("pipeline").delete().in_("unternehmen", unternehmen_to_delete).execute()
             
-            # 2. SPEICHERN
             to_upsert = edited_df[edited_df["🗑️ Löschen"] == False].drop(columns=["🗑️ Löschen"])
             valid_data = to_upsert[to_upsert["unternehmen"].astype(str).str.strip() != ""]
             
             records = valid_data.to_dict(orient="records")
             if records:
-                # Da uns evtl. die ID fehlt, nutzen wir insert statt upsert, 
-                # ABER wir müssen aufpassen, dass wir keine Duplikate bauen. 
-                # (In einem echten Produktionssystem rüstet man in Supabase den Primary Key "id" nach)
                 try:
                      supabase.table("pipeline").upsert(records).execute()
                 except Exception as ex:
-                     # Fallback falls upsert ohne ID scheitert
-                     st.warning("Upsert erfordert einen Primary Key (id). Die Daten wurden lokal verarbeitet, aber das Datenbank-Schema in Supabase benötigt eine Spalte 'id' als Primary Key für saubere Updates.")
+                     st.warning("Fehler beim Cloud-Update.")
                 
             st.session_state.save_success = True
             st.rerun()
 
         st.divider()
         
-        # --- KI-ANALYSE AUS DER PIPELINE STARTEN ---
-        st.subheader("🤖 KI-Analyse für Favoriten")
+        # --- OFFLINE FEATURE: TEMPLATE GENERATOR ---
+        st.subheader("📝 Anschreiben-Generator (Initiativbewerbung)")
         unternehmen_liste = df_pipeline["unternehmen"].tolist()
         
-        col_auswahl, col_btn = st.columns([3, 1])
-        with col_auswahl:
-            selected_company = st.selectbox("Wähle ein Unternehmen aus deiner Pipeline:", unternehmen_liste)
-        with col_btn:
-            st.write("") 
-            st.write("")
-            if st.button("🚀 KI-Match prüfen"):
-                details = df_pipeline[df_pipeline["unternehmen"] == selected_company]["notizen"].iloc[0]
+        if unternehmen_liste:
+            selected_company_letter = st.selectbox("Zielunternehmen für das Anschreiben auswählen:", unternehmen_liste, key="letter_select")
+            
+            if st.button("⚙️ Textgerüst generieren"):
+                # Unternehmensspezifische Daten abgreifen
+                company_role = df_pipeline[df_pipeline["unternehmen"] == selected_company_letter]["rolle"].iloc[0]
+                if not company_role or str(company_role).strip() == "":
+                    company_role = "IT-Consulting und Projektmanagement"
+
+                template_text = f"""Sehr geehrte Damen und Herren,
+
+auf der Suche nach einem dynamischen und innovationsgetriebenen Umfeld im Bereich {company_role} bin ich auf {selected_company_letter} aufmerksam geworden. Mit meinem klaren Fokus auf die Schnittstelle zwischen Technologie und Wirtschaftsorganisation möchte ich mein Profil proaktiv in Ihr Team einbringen.
+
+Als Student der Wirtschaftsinformatik (B.Sc.) an der Hochschule Osnabrück verfüge ich über ein starkes analytisches Fundament. Parallel dazu verantworte ich in meiner aktuellen Praxisrolle das operative IT-Infrastrukturmanagement. Diese Kombination aus strategischem Studium und handfester IT-Operations-Erfahrung ermöglicht es mir, technische Anforderungen nicht nur zu verstehen, sondern zielgerichtet in funktionierende Geschäftsprozesse zu übersetzen.
+
+Mich reizt besonders die Möglichkeit, bei {selected_company_letter} PMO-Strukturen zu unterstützen, IT-Projekte ganzheitlich zu begleiten und mich langfristig im Consulting-Umfeld zu etablieren. Ich arbeite strukturiert, übernehme gerne Verantwortung und behalte auch bei komplexen Rollouts den systemischen Überblick.
+
+Gerne überzeuge ich Sie in einem persönlichen Gespräch von meiner Motivation und meiner pragmatischen Hands-on-Mentalität. 
+
+Mit freundlichen Grüßen,
+
+Bo Baumann"""
                 
-                st.session_state.analyze_company_name = selected_company
-                st.session_state.analyze_company_details = details if details else "Aus Pipeline übernommen"
-                st.switch_page("pages/3_🧠_KI_Analyse.py")
+                st.info("Dein personalisiertes Grundgerüst. Kopiere den Text und passe ihn für die finale Bewerbung leicht an.")
+                st.text_area("Generiertes Anschreiben:", value=template_text, height=350)
+        else:
+            st.write("Füge Unternehmen zur Pipeline hinzu, um Anschreiben zu generieren.")
 
 except Exception as e:
     st.error(f"Fehler beim Laden der Pipeline: {e}")
