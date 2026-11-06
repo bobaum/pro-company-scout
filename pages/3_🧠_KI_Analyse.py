@@ -17,22 +17,32 @@ def get_db():
 supabase = get_db()
 
 try:
-    # Neues, modernes Google SDK
     client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     api_bereit = True
 except Exception:
     api_bereit = False
 
-# --- SESSION STATE ABFRAGEN (Der nahtlose Übergang) ---
-prefill_company = st.session_state.get("analyze_company_name", "")
-prefill_details = st.session_state.get("analyze_company_details", "")
+# --- SESSION STATE & WIDGET SYNC ---
+# Wenn aus dem Live Scout eine Firma übergeben wurde, überschreiben wir die Felder
+if "analyze_company_name" in st.session_state and st.session_state.analyze_company_name:
+    st.session_state.ziel_input = st.session_state.analyze_company_name
+    st.session_state.details_input = st.session_state.analyze_company_details
+    # Anschliessend leeren, damit man manuell weiterschreiben kann
+    st.session_state.analyze_company_name = ""
+    st.session_state.analyze_company_details = ""
 
-if prefill_company:
-    st.info(f"💡 Unternehmen aus dem Live Scout übernommen: **{prefill_company}**")
+# Standardwerte im Session State initialisieren, falls leer
+if "ziel_input" not in st.session_state:
+    st.session_state.ziel_input = ""
+if "details_input" not in st.session_state:
+    st.session_state.details_input = ""
 
-# --- ANALYSE FORMULAR ---
-ziel_unternehmen = st.text_input("Ziel-Unternehmen:", value=prefill_company)
-stellen_details = st.text_area("Details zum Unternehmen / zur Stelle:", value=prefill_details, height=100)
+if st.session_state.ziel_input:
+    st.info(f"💡 Aktuelles Ziel-Unternehmen im Fokus: **{st.session_state.ziel_input}**")
+
+# --- ANALYSE FORMULAR (Mit festem Key gekoppelt) ---
+ziel_unternehmen = st.text_input("Ziel-Unternehmen:", key="ziel_input")
+stellen_details = st.text_area("Details zum Unternehmen / zur Stelle:", key="details_input", height=100)
 
 if st.button("🚀 KI-Analyse starten", type="primary"):
     if not api_bereit:
@@ -64,12 +74,11 @@ if st.button("🚀 KI-Analyse starten", type="primary"):
                     Details: '{stellen_details}'
                     
                     Führe eine prägnante Skill-Gap-Analyse durch (Nutze Bulletpoints):
-                    1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber perfekt für dieses Unternehmen mit?
+                    1. **Matching Hard- & Soft-Skills:** Was bringt the Bewerber perfekt für dieses Unternehmen mit?
                     2. **Der Skill-Gap:** Welche Anforderungen fehlen ihm noch?
                     3. **Handlungsempfehlung:** Wie kann er diese Lücke bei einer Initiativbewerbung strategisch kaschieren?
                     """
                     
-                    # Aufruf über das neue SDK
                     response = client.models.generate_content(
                         model='gemini-1.5-flash',
                         contents=prompt,
@@ -80,10 +89,6 @@ if st.button("🚀 KI-Analyse starten", type="primary"):
                     
                     with st.container(border=True):
                         st.markdown(antwort)
-                    
-                    # Speicher leeren, nachdem die Analyse durch ist
-                    st.session_state.analyze_company_name = ""
-                    st.session_state.analyze_company_details = ""
                     
             except Exception as e:
                 st.error(f"Fehler bei der Datenbank- oder KI-Abfrage: {e}")
