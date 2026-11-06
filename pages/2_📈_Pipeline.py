@@ -6,15 +6,14 @@ st.set_page_config(page_title="Pipeline", page_icon="📈", layout="wide")
 st.title("📈 Meine Bewerbungs-Pipeline")
 st.markdown("Dein CRM-Board: Verwalte hier deine Favoriten und den Status deiner Initiativbewerbungen.")
 
-# --- SESSION STATE FÜR ERFOLGSMELDUNG (Der UX-Trick) ---
+# --- SESSION STATE FÜR ERFOLGSMELDUNG ---
 if "save_success" not in st.session_state:
     st.session_state.save_success = False
 
-# Zeigt die Meldung NACH dem Neuladen der Seite an
 if st.session_state.save_success:
     st.toast("✅ Änderungen erfolgreich in der Cloud gespeichert!", icon="💾")
     st.success("✅ Änderungen erfolgreich gespeichert!")
-    st.session_state.save_success = False # Ticket wieder entwerten
+    st.session_state.save_success = False 
 
 # --- DATENBANK-VERBINDUNG ---
 @st.cache_resource
@@ -51,8 +50,30 @@ try:
         
         st.divider()
         
+        # --- NEU: REPORTING EXPORT (PMO Feature) ---
+        # Wir konvertieren den DataFrame in einen CSV-String (im UTF-8 Format)
+        @st.cache_data
+        def convert_df(df):
+            # Index weglassen, als CSV formatieren
+            return df.to_csv(index=False).encode('utf-8')
+
+        csv = convert_df(df_pipeline)
+        
+        # --- KOPFZEILE MIT BUTTONS ---
+        header_col, export_col = st.columns([3, 1])
+        with header_col:
+            st.subheader("📋 Status-Board")
+        with export_col:
+            # Download-Button mit dem konvertierten CSV
+            st.download_button(
+                label="📥 Pipeline als CSV exportieren",
+                data=csv,
+                file_name='pmo_scout_pipeline.csv',
+                mime='text/csv',
+                use_container_width=True
+            )
+
         # --- INTERAKTIVE TABELLE ---
-        st.subheader("📋 Status-Board")
         edited_df = st.data_editor(
             df_pipeline,
             num_rows="dynamic",
@@ -78,8 +99,6 @@ try:
             records = valid_data.to_dict(orient="records")
             if records:
                 supabase.table("pipeline").upsert(records).execute()
-                
-                # Ticket in den Tresor legen und Seite neu laden
                 st.session_state.save_success = True
                 st.rerun()
 
