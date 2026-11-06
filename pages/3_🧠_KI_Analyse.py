@@ -23,15 +23,12 @@ except Exception:
     api_bereit = False
 
 # --- SESSION STATE & WIDGET SYNC ---
-# Wenn aus dem Live Scout eine Firma übergeben wurde, überschreiben wir die Felder
 if "analyze_company_name" in st.session_state and st.session_state.analyze_company_name:
     st.session_state.ziel_input = st.session_state.analyze_company_name
     st.session_state.details_input = st.session_state.analyze_company_details
-    # Anschliessend leeren, damit man manuell weiterschreiben kann
     st.session_state.analyze_company_name = ""
     st.session_state.analyze_company_details = ""
 
-# Standardwerte im Session State initialisieren, falls leer
 if "ziel_input" not in st.session_state:
     st.session_state.ziel_input = ""
 if "details_input" not in st.session_state:
@@ -40,11 +37,35 @@ if "details_input" not in st.session_state:
 if st.session_state.ziel_input:
     st.info(f"💡 Aktuelles Ziel-Unternehmen im Fokus: **{st.session_state.ziel_input}**")
 
-# --- ANALYSE FORMULAR (Mit festem Key gekoppelt) ---
+# --- ANALYSE FORMULAR ---
 ziel_unternehmen = st.text_input("Ziel-Unternehmen:", key="ziel_input")
 stellen_details = st.text_area("Details zum Unternehmen / zur Stelle:", key="details_input", height=100)
 
-if st.button("🚀 KI-Analyse starten", type="primary"):
+# --- NEU: ZWEI BUTTONS NEBENEINANDER ---
+btn_col1, btn_col2 = st.columns(2)
+
+with btn_col1:
+    analyze_clicked = st.button("🚀 KI-Analyse starten", type="primary", use_container_width=True)
+
+with btn_col2:
+    add_to_pipeline_clicked = st.button("➕ In Pipeline speichern", use_container_width=True)
+
+# 1. Logik: Zur Pipeline hinzufügen
+if add_to_pipeline_clicked:
+    if not supabase:
+        st.error("⚠️ Datenbankverbindung fehlt.")
+    elif not ziel_unternehmen:
+        st.warning("Bitte gib ein Ziel-Unternehmen ein.")
+    else:
+        new_entry = {"unternehmen": ziel_unternehmen, "rolle": "Initiativ", "status": "Neu", "notizen": stellen_details}
+        try:
+            supabase.table("pipeline").insert(new_entry).execute()
+            st.toast(f"✅ {ziel_unternehmen} wurde in der Pipeline gespeichert!", icon="💾")
+        except Exception as e:
+            st.error(f"Fehler beim Speichern: {e}")
+
+# 2. Logik: KI Analyse starten
+if analyze_clicked:
     if not api_bereit:
         st.error("⚠️ Gemini API-Schlüssel fehlt.")
     elif not supabase:
@@ -54,7 +75,6 @@ if st.button("🚀 KI-Analyse starten", type="primary"):
     else:
         with st.spinner("Gemini analysiert dein Profil..."):
             try:
-                # Aktuelles Profil aus Supabase laden
                 profil_response = supabase.table("profil").select("*").eq("id", 1).execute()
                 
                 if not profil_response.data or not profil_response.data[0].get("lebenslauf"):
@@ -74,7 +94,7 @@ if st.button("🚀 KI-Analyse starten", type="primary"):
                     Details: '{stellen_details}'
                     
                     Führe eine prägnante Skill-Gap-Analyse durch (Nutze Bulletpoints):
-                    1. **Matching Hard- & Soft-Skills:** Was bringt the Bewerber perfekt für dieses Unternehmen mit?
+                    1. **Matching Hard- & Soft-Skills:** Was bringt der Bewerber perfekt für dieses Unternehmen mit?
                     2. **Der Skill-Gap:** Welche Anforderungen fehlen ihm noch?
                     3. **Handlungsempfehlung:** Wie kann er diese Lücke bei einer Initiativbewerbung strategisch kaschieren?
                     """
@@ -91,4 +111,4 @@ if st.button("🚀 KI-Analyse starten", type="primary"):
                         st.markdown(antwort)
                     
             except Exception as e:
-                st.error(f"Fehler bei der Datenbank- oder KI-Abfrage: {e}")
+                st.error(f"Fehler bei der KI-Abfrage: {e}")
