@@ -39,10 +39,14 @@ if "ki_ergebnis" not in st.session_state:
 if st.session_state.get("analyze_company_name"):
     st.session_state.saved_ziel = st.session_state.analyze_company_name
     st.session_state.saved_details = st.session_state.analyze_company_details
-    st.session_state.saved_url = "" 
+    
+    # NEU: URL aus dem Teleport abfangen (oder leer lassen, falls keine da war)
+    st.session_state.saved_url = st.session_state.get("analyze_company_url", "")
+    
     st.session_state.ki_ergebnis = "" 
     st.session_state.analyze_company_name = ""
     st.session_state.analyze_company_details = ""
+    st.session_state.analyze_company_url = "" # Tresor aufräumen
 
 def sync_inputs():
     st.session_state.saved_ziel = st.session_state.widget_ziel
