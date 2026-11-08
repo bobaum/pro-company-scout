@@ -29,9 +29,11 @@ KI und Datenverarbeitung: Google GenAI SDK mit Gemini 3.8 Pro, Gemini 3.8 Flash 
 
 1. Live Scout
 Eine Suchmaschine, die Firmen nach Branche und Ort sucht. Die Ergebnisse landen direkt auf einer interaktiven Karte und können per Klick in meine Datenbank gespeichert werden.
+![Live Company Scout Karte](scout.jpg)
 
 2. Pipeline
 Mein CRM Board für alle Bewerbungen. Hier gibt es auch einen Anschreiben Generator. Der baut mir aus meinen hinterlegten Skills und der Zielrolle ein ehrliches und geerdetes Anschreiben zusammen.
+![Pipeline CRM Board](pipeline.png)
 
 3. KI Analyse
 Ein Web Scraper liest die Homepage der Zielfirma aus. Gemini vergleicht dann die Ausrichtung der Firma mit meinem Profil und zeigt mir, wo meine Stärken liegen und was vielleicht noch fehlt.
