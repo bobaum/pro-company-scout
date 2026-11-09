@@ -23,7 +23,7 @@ try:
     # Fail-Fast Architektur: Wenn Google nach 15 Sekunden nicht antwortet, kappen wir die Leitung!
     client = genai.Client(
         api_key=st.secrets["GEMINI_API_KEY"],
-        http_options={'timeout': 15.0}
+        http_options={'timeout': 60.0}
     )
     api_bereit = True
 except Exception:
@@ -184,7 +184,7 @@ if analyze_clicked:
                                     else:
                                         status_placeholder.error(f"⚠️ {model_name} ist überlastet. Wechsle zum Fallback-Modell...")
                                 elif "timed out" in error_msg.lower():
-                                    status_placeholder.warning(f"⏱️ {model_name} antwortet nicht (Timeout nach 15s). Wechsle zum Fallback...")
+                                    status_placeholder.warning(f"⏱️ {model_name} antwortet nicht (Timeout nach 60s). Wechsle zum Fallback...")
                                     break 
                                 elif "404" in error_msg:
                                     status_placeholder.warning(f"⚠️ Modell {model_name} noch nicht verfügbar. Wechsle zum Fallback...")
