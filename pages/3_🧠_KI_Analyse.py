@@ -20,11 +20,8 @@ def get_db():
 supabase = get_db()
 
 try:
-    # Fail-Fast Architektur: Wenn Google nach 15 Sekunden nicht antwortet, kappen wir die Leitung!
-    client = genai.Client(
-        api_key=st.secrets["GEMINI_API_KEY"],
-        http_options={'timeout': 60.0}
-    )
+    # Standard-Verbindung für das SDK ohne manuelles Timeout
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     api_bereit = True
 except Exception:
     api_bereit = False
@@ -87,10 +84,12 @@ stellen_details = st.text_area(
 btn_col1, btn_col2 = st.columns(2)
 
 with btn_col1:
-    analyze_clicked = st.button("🚀 KI-Analyse starten", type="primary", use_container_width=True)
+    # NEU: Streamlit Update -> width="stretch" statt use_container_width
+    analyze_clicked = st.button("🚀 KI-Analyse starten", type="primary", width="stretch")
 
 with btn_col2:
-    add_to_pipeline_clicked = st.button("➕ In Pipeline speichern", use_container_width=True)
+    # NEU: Streamlit Update -> width="stretch" statt use_container_width
+    add_to_pipeline_clicked = st.button("➕ In Pipeline speichern", width="stretch")
 
 # 1. Logik: Zur Pipeline hinzufügen
 if add_to_pipeline_clicked:
@@ -155,7 +154,8 @@ if analyze_clicked:
                     """
                     
                     # --- SMART CALL LOGIC ---
-                    fallback_models = ["gemini-3.8-pro", "gemini-3.8-flash", "gemini-2.0-flash"]
+                    # Streng limitiert auf exakt dieses eine Modell
+                    fallback_models = ["gemini-3.8-flash"]
                     max_retries = 3
                     erfolg = False
                     status_placeholder = st.empty()
@@ -182,19 +182,19 @@ if analyze_clicked:
                                         status_placeholder.warning(f"⏳ Server ausgelastet (503). Versuch {attempt+1}... Warte {wait_time:.1f}s")
                                         time.sleep(wait_time)
                                     else:
-                                        status_placeholder.error(f"⚠️ {model_name} ist überlastet. Wechsle zum Fallback-Modell...")
+                                        status_placeholder.error(f"⚠️ {model_name} ist überlastet.")
                                 elif "timed out" in error_msg.lower():
-                                    status_placeholder.warning(f"⏱️ {model_name} antwortet nicht (Timeout nach 60s). Wechsle zum Fallback...")
-                                    break 
+                                        status_placeholder.warning(f"⏱️ Verbindung zu {model_name} abgebrochen.")
+                                        break 
                                 elif "404" in error_msg:
-                                    status_placeholder.warning(f"⚠️ Modell {model_name} noch nicht verfügbar. Wechsle zum Fallback...")
+                                    status_placeholder.warning(f"⚠️ Modell {model_name} nicht gefunden (404).")
                                     break
                                 else:
                                     st.error(f"Unerwarteter Fehler bei der KI-Abfrage: {error_msg}")
                                     break 
                                     
                     if not erfolg:
-                        st.error("❌ Alle Modelle sind aktuell überlastet. Bitte probiere es in ein paar Minuten erneut.")
+                        st.error("❌ Die KI-Analyse konnte nicht durchgeführt werden. Bitte probiere es später erneut.")
                         
             except Exception as e:
                 st.error(f"Fehler beim Laden des Profils: {e}")
