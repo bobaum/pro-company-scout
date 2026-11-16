@@ -83,28 +83,32 @@ with st.expander("Neues Unternehmen manuell hinzufügen"):
 st.subheader("Status Board")
 
 if not df.empty:
-   st.write("Tatsächlich vorhandene Spalten:", df.columns.tolist())
-# Hier kommt dann deine alte Zeile 87:
-# anzeige_df = df[["id", "unternehmen", "rolle", "ansprechpartner", "status", "deadline", "notizen"]].copy()
-    anzeige_df = df[["id", "unternehmen", "rolle", "ansprechpartner", "status", "deadline", "notizen"]].copy()
-    
-    # Interaktiver Data Editor
-    edited_df = st.data_editor(
-        anzeige_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "id": None, # ID verstecken
-            "unternehmen": st.column_config.TextColumn("Unternehmen", required=True),
-            "rolle": st.column_config.TextColumn("Rolle / Bereich"),
-            "ansprechpartner": st.column_config.TextColumn("Ansprechpartner"),
-            "status": st.column_config.SelectboxColumn("Status", options=["Neu", "In Vorbereitung", "Bewerbung raus", "Interview", "Abgesagt", "Zusage"], required=True),
-            "deadline": st.column_config.DateColumn("Wiedervorlage"),
-            "notizen": st.column_config.TextColumn("Notizen")
-        },
-        num_rows="dynamic",
-        key="pipeline_editor"
-    )
+        st.write("Tatsächlich vorhandene Spalten:", df.columns.tolist())
+        
+        # Hier kommt dann deine alte Zeile 87 (erstmal auskommentiert):
+        # anzeige_df = df[["id", "unternehmen", "rolle", "ansprechpartner", "status", "deadline", "notizen"]].copy()
+        
+        # Das hier ist die Zeile, die den Fehler wirft - wir lassen sie kurz drin, 
+        # um den tatsächlichen Spalten-Output von oben zu sehen!
+        anzeige_df = df[["id", "unternehmen", "rolle", "ansprechpartner", "status", "deadline", "notizen"]].copy()
+
+        # Interaktiver Data Editor
+        edited_df = st.data_editor(
+            anzeige_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "id": None, # ID verstecken
+                "unternehmen": st.column_config.TextColumn("Unternehmen", required=True),
+                "rolle": st.column_config.TextColumn("Rolle / Bereich"),
+                "ansprechpartner": st.column_config.TextColumn("Ansprechpartner"),
+                "status": st.column_config.SelectboxColumn("Status", options=["Neu", "In Vorbereitung", "Bewerbung verschickt", "Absage", "Interview", "Angebot"]),
+                "deadline": st.column_config.DateColumn("Wiedervorlage"),
+                "notizen": st.column_config.TextColumn("Notizen")
+            },
+            num_rows="dynamic",
+            key="pipeline_editor"
+        )
 
     if st.button("Änderungen in Cloud speichern", type="primary"):
         # Gelöschte Reihen aus der Datenbank entfernen
