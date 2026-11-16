@@ -44,24 +44,13 @@ def load_user_profile():
 
 profil = load_user_profile()
 
-# --- SESSION STATE ÜBERNAHME AUS DEM SCOUT (ALLE GÄNGIGEN KEYS ABFANGEN) ---
-default_company = (
-    st.session_state.get("selected_company")
-    or st.session_state.get("scout_company")
-    or st.session_state.get("analyse_company")
-    or st.session_state.get("analyse_firma")
-    or st.session_state.get("firma")
-    or ""
-)
+# --- EXAKTE SESSION STATE ÜBERNAHME AUS DEM LIVE SCOUT ---
+default_company = st.session_state.get("analyze_company_name", "")
+default_url = st.session_state.get("analyze_company_url", "")
+company_details = st.session_state.get("analyze_company_details", "")
 
-default_url = (
-    st.session_state.get("selected_url")
-    or st.session_state.get("scout_url")
-    or st.session_state.get("analyse_url")
-    or st.session_state.get("url")
-    or st.session_state.get("website")
-    or ""
-)
+if company_details:
+    st.info(f"Übernommene Scout-Infos: {company_details.replace(chr(10), ' | ')}")
 
 # --- EINGABEBEREICH ---
 col1, col2 = st.columns(2)
@@ -110,6 +99,7 @@ if st.button("Unternehmen analysieren & Match berechnen", type="primary", width=
                     "Du bist ein erfahrener Karriere-Coach und Senior IT-Consultant.\n"
                     "Analysiere das folgende Unternehmen anhand seiner Webseiten-Inhalte und gleiche es mit dem Bewerberprofil ab.\n\n"
                     f"UNTERNEHMEN: {unternehmen}\n"
+                    f"ZUSATZINFOS (STANDORT/BRANCHE): {company_details}\n"
                     f"ANGESTREBTE ROLLE: {ziel_rolle}\n"
                     f"WEBSEITEN-INHALT (Auszug):\n{website_text}\n\n"
                     f"BEWERBERPROFIL:\n{profil_text}\n\n"
@@ -117,40 +107,4 @@ if st.button("Unternehmen analysieren & Match berechnen", type="primary", width=
                     "1. **Unternehmensfokus & Kerngeschäft:** Was macht die Firma konkret (Branche, Tech-Stack, Beratungsschwerpunkte)?\n"
                     "2. **Match-Score & Stärken-Abgleich (0-100 %):** Warum passt das Profil (Wirtschaftsinformatik + IT-Admin-Praxis + Cloud-Projekte) zu diesem Unternehmen?\n"
                     "3. **Skill-Gaps & Gesprächsvorbereitung:** Worauf sollte sich der Bewerber im Gespräch besonders vorbereiten oder welche Themen sollte er aktiv ansprechen?\n"
-                    "4. **Individueller Anschreiben-Entwurf:** Ein moderner, direkter und geerdeter Entwurf (max. 180 Wörter) ohne veraltete Standardfloskeln, der die Brücke zwischen operativer IT-Praxis und strategischem Consulting-Interesse schlägt."
-                )
-                
-                try:
-                    response = gemini_client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=prompt
-                    )
-                    st.session_state["last_analysis"] = response.text
-                    st.session_state["last_company"] = unternehmen
-                    st.session_state["last_role"] = ziel_rolle
-                    st.session_state["last_contact"] = ansprechpartner
-                except Exception as e:
-                    st.error(f"Fehler bei der Gemini-Generierung: {e}")
-
-# --- ERGEBNIS ANZEIGEN & IN PIPELINE SPEICHERN ---
-if "last_analysis" in st.session_state and st.session_state["last_analysis"]:
-    st.divider()
-    st.subheader(f"Analyse-Ergebnis: {st.session_state.get('last_company', unternehmen)}")
-    st.markdown(st.session_state["last_analysis"])
-    
-    st.divider()
-    if st.button("Unternehmen & Analyse in meine Pipeline übernehmen", type="secondary", width="stretch"):
-        try:
-            kurz_notiz = st.session_state["last_analysis"][:1000] + "..."
-            pipeline_entry = {
-                "unternehmen": st.session_state.get("last_company", unternehmen),
-                "rolle": st.session_state.get("last_role", ziel_rolle),
-                "ansprechpartner": st.session_state.get("last_contact", ansprechpartner),
-                "status": "In Vorbereitung",
-                "notizen": kurz_notiz
-            }
-            supabase.table("pipeline").insert(pipeline_entry).execute()
-            st.toast(f"{pipeline_entry['unternehmen']} erfolgreich in die Pipeline gespeichert!")
-            st.success("Eintrag wurde in deiner Bewerbungs-Pipeline gespeichert.")
-        except Exception as e:
-            st.error(f"Fehler beim Speichern in der Pipeline: {e}")
+                    "4. **Individueller Anschreiben-Entwurf:** Ein moderner, direkter und geerdeter Entwurf (max. 180 Wörter) ohne ver
