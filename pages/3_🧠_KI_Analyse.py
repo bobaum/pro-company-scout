@@ -83,7 +83,9 @@ with st.expander("Neues Unternehmen manuell hinzufügen"):
 st.subheader("Status Board")
 
 if not df.empty:
-    # Sortieren der Spalten für eine saubere Ansicht
+   st.write("Tatsächlich vorhandene Spalten:", df.columns.tolist())
+# Hier kommt dann deine alte Zeile 87:
+# anzeige_df = df[["id", "unternehmen", "rolle", "ansprechpartner", "status", "deadline", "notizen"]].copy()
     anzeige_df = df[["id", "unternehmen", "rolle", "ansprechpartner", "status", "deadline", "notizen"]].copy()
     
     # Interaktiver Data Editor
