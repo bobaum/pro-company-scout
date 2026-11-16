@@ -1,3 +1,4 @@
+import time
 import streamlit as st
 import requests
 from supabase import create_client
@@ -94,6 +95,35 @@ def scrape_website_jina(url):
     except Exception:
         return None
 
+# --- HELPER: GEMINI MIT RETRY & FALLBACK ---
+def generate_with_retry(client, prompt_text):
+    models_to_try = [
+        "gemini-3.8-flash",
+        "gemini-3-flash-preview",
+        "gemini-2.5-flash"
+    ]
+    last_error = None
+
+    for model_name in models_to_try:
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt_text
+                )
+                return response.text, model_name
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str:
+                    wait_sec = 2 * (attempt + 1)
+                    st.toast(f"{model_name} ausgelastet – neuer Versuch in {wait_sec}s...")
+                    time.sleep(wait_sec)
+                else:
+                    break
+
+    raise RuntimeError(f"Alle Versuche fehlgeschlagen. Letzter Fehler: {last_error}")
+
 # --- ANALYSE STARTEN ---
 if st.button("Unternehmen analysieren & Match berechnen", type="primary", width="stretch"):
     if not unternehmen or not webseite:
@@ -101,7 +131,7 @@ if st.button("Unternehmen analysieren & Match berechnen", type="primary", width=
     elif not gemini_client:
         st.error("Kein gültiger Gemini API Key hinterlegt.")
     else:
-        with st.spinner(f"Lese Webseite von {unternehmen} aus..."):
+        with st.spinner(f"Lese Webseite von {unternehmen} aus und führe KI-Analyse durch..."):
             website_text = scrape_website_jina(webseite)
 
             if not website_text:
@@ -137,11 +167,9 @@ if st.button("Unternehmen analysieren & Match berechnen", type="primary", width=
                 prompt = "\n".join(prompt_lines)
 
                 try:
-                    response = gemini_client.models.generate_content(
-                        model="gemini-3.8-flash",
-                        contents=prompt
-                    )
-                    st.session_state["last_analysis"] = response.text
+                    analysis_text, used_model = generate_with_retry(gemini_client, prompt)
+                    st.session_state["last_analysis"] = analysis_text
+                    st.session_state["last_model"] = used_model
                     st.session_state["last_company"] = unternehmen
                     st.session_state["last_role"] = ziel_rolle
                     st.session_state["last_contact"] = ansprechpartner
@@ -153,6 +181,8 @@ if "last_analysis" in st.session_state and st.session_state["last_analysis"]:
     st.divider()
     firma_titel = st.session_state.get("last_company", unternehmen)
     st.subheader(f"Analyse-Ergebnis: {firma_titel}")
+    if "last_model" in st.session_state:
+        st.caption(f"Generiert mit Modell: `{st.session_state['last_model']}`")
     st.markdown(st.session_state["last_analysis"])
 
     st.divider()
