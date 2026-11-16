@@ -58,7 +58,7 @@ else:
         use_container_width=True,
         key="pipeline_editor",
         column_config={
-            "id": None,  # ID-Spalte für den Nutzer ausblenden, aber intern behalten
+            "id": None,  # ID-Spalte ausblenden
             "status": st.column_config.SelectboxColumn(
                 "Status",
                 options=status_options,
@@ -70,16 +70,14 @@ else:
     # --- SPEICHER-BUTTON FÜR ÄNDERUNGEN ---
     if st.button("Änderungen in Cloud speichern", type="primary"):
         try:
-            # Konvertiere den editierten DataFrame zurück in ein Dictionary-Format für Supabase
             records = edited_df.to_dict(orient="records")
-            
-            # Upsert in die Supabase Pipeline-Tabelle
+            # Upsert in die Supabase Pipeline-Tabelle mit detailliertem Exception-Handling
             supabase.table("pipeline").upsert(records).execute()
             st.success("Pipeline erfolgreich aktualisiert!")
             st.toast("Daten in Supabase gespeichert", icon="💾")
             st.rerun()
         except Exception as ex:
-            # Zeigt den echten Systemfehler exakt an statt ihn zu verschlucken[cite: 4]
+            # Zeigt den echten Systemfehler exakt an statt ihn zu verschlucken
             st.error(f"Fehler beim Cloud-Update: {ex}")
 
 # --- CSV EXPORT ---
