@@ -65,7 +65,6 @@ def scrape_website_jina(url):
     try:
         response = requests.get(jina_url, timeout=15)
         if response.status_code == 200:
-            # Begrenzung auf 15.000 Zeichen für saubere Token-Nutzung
             return response.text[:15000]
         return None
     except Exception:
@@ -84,28 +83,59 @@ if st.button("Unternehmen analysieren & Match berechnen", type="primary", width=
             if not website_text:
                 st.error("Die Webseite konnte nicht automatisch ausgelesen werden. Prüfe die URL oder versuche eine Unterseite (z. B. /karriere).")
             else:
-                profil_text = f"""
-                Name: {profil.get('name', 'Bo Baumann')}
-                Studium: {profil.get('studium', 'B.Sc. Wirtschaftsinformatik (Hochschule Osnabrück)')}
-                Erfahrung: {profil.get('erfahrung', 'Junior IT-Administrator (IT Operations, Support für 50+ User)')}
-                Skills: {profil.get('skills', 'Python, Streamlit, PostgreSQL/Supabase, REST APIs, IT-Service-Management, Prozessanalyse')}
-                Fokus: {profil.get('fokus', 'PMO, IT-Consulting, Business Analysis, Schnittstelle Business & IT')}
-                """
+                profil_text = (
+                    f"Name: {profil.get('name', 'Bo Baumann')}\n"
+                    f"Studium: {profil.get('studium', 'B.Sc. Wirtschaftsinformatik (Hochschule Osnabrück)')}\n"
+                    f"Erfahrung: {profil.get('erfahrung', 'Junior IT-Administrator (IT Operations, Support für 50+ User)')}\n"
+                    f"Skills: {profil.get('skills', 'Python, Streamlit, PostgreSQL/Supabase, REST APIs, IT-Service-Management, Prozessanalyse')}\n"
+                    f"Fokus: {profil.get('fokus', 'PMO, IT-Consulting, Business Analysis, Schnittstelle Business & IT')}"
+                )
                 
-                prompt = f"""
-                Du bist ein erfahrener Karriere-Coach und Senior IT-Consultant. 
-                Analysiere das folgende Unternehmen anhand seiner Webseiten-Inhalte und gleiche es mit dem Bewerberprofil ab.
+                prompt = (
+                    "Du bist ein erfahrener Karriere-Coach und Senior IT-Consultant.\n"
+                    "Analysiere das folgende Unternehmen anhand seiner Webseiten-Inhalte und gleiche es mit dem Bewerberprofil ab.\n\n"
+                    f"UNTERNEHMEN: {unternehmen}\n"
+                    f"ANGESTREBTE ROLLE: {ziel_rolle}\n"
+                    f"WEBSEITEN-INHALT (Auszug):\n{website_text}\n\n"
+                    f"BEWERBERPROFIL:\n{profil_text}\n\n"
+                    "Strukturiere deine Antwort exakt in diese vier Abschnitte (kurz, präzise, ohne leere Floskeln):\n"
+                    "1. **Unternehmensfokus & Kerngeschäft:** Was macht die Firma konkret (Branche, Tech-Stack, Beratungsschwerpunkte)?\n"
+                    "2. **Match-Score & Stärken-Abgleich (0-100 %):** Warum passt das Profil (Wirtschaftsinformatik + IT-Admin-Praxis + Cloud-Projekte) zu diesem Unternehmen?\n"
+                    "3. **Skill-Gaps & Gesprächsvorbereitung:** Worauf sollte sich der Bewerber im Gespräch besonders vorbereiten oder welche Themen sollte er aktiv ansprechen?\n"
+                    "4. **Individueller Anschreiben-Entwurf:** Ein moderner, direkter und geerdeter Entwurf (max. 180 Wörter) ohne veraltete Standardfloskeln, der die Brücke zwischen operativer IT-Praxis und strategischem Consulting-Interesse schlägt."
+                )
                 
-                UNTERNEHMEN: {unternehmen}
-                ANGESTREBTE ROLLE: {ziel_rolle}
-                WEBSEITEN-INHALT (Auszug):
-                {website_text}
-                
-                BEWERBERPROFIL:
-                {profil_text}
-                
-                Strukturiere deine Antwort exakt in diese vier Abschnitte (kurz, präzise, ohne leere Floskeln):
-                1. **Unternehmensfokus & Kerngeschäft:** Was macht die Firma konkret (Branche, Tech-Stack, Beratungsschwerpunkte)?
-                2. **Match-Score & Stärken-Abgleich (0-100 %):** Warum passt das Profil (Wirtschaftsinformatik + IT-Admin-Praxis + Cloud-Projekte) zu diesem Unternehmen?
-                3. **Skill-Gaps & Gesprächsvorbereitung:** Worauf sollte sich der Bewerber im Gespräch besonders vorbereiten oder welche Themen sollte er aktiv ansprechen?
-                4. **Individueller Anschreiben-Entwurf:** Ein moderner, direkter und
+                try:
+                    response = gemini_client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=prompt
+                    )
+                    st.session_state["last_analysis"] = response.text
+                    st.session_state["last_company"] = unternehmen
+                    st.session_state["last_role"] = ziel_rolle
+                    st.session_state["last_contact"] = ansprechpartner
+                except Exception as e:
+                    st.error(f"Fehler bei der Gemini-Generierung: {e}")
+
+# --- ERGEBNIS ANZEIGEN & IN PIPELINE SPEICHERN ---
+if "last_analysis" in st.session_state and st.session_state["last_analysis"]:
+    st.divider()
+    st.subheader(f"Analyse-Ergebnis: {st.session_state.get('last_company', unternehmen)}")
+    st.markdown(st.session_state["last_analysis"])
+    
+    st.divider()
+    if st.button("Unternehmen & Analyse in meine Pipeline übernehmen", type="secondary", width="stretch"):
+        try:
+            kurz_notiz = st.session_state["last_analysis"][:1000] + "..."
+            pipeline_entry = {
+                "unternehmen": st.session_state.get("last_company", unternehmen),
+                "rolle": st.session_state.get("last_role", ziel_rolle),
+                "ansprechpartner": st.session_state.get("last_contact", ansprechpartner),
+                "status": "In Vorbereitung",
+                "notizen": kurz_notiz
+            }
+            supabase.table("pipeline").insert(pipeline_entry).execute()
+            st.toast(f"{pipeline_entry['unternehmen']} erfolgreich in die Pipeline gespeichert!")
+            st.success("Eintrag wurde in deiner Bewerbungs-Pipeline gespeichert.")
+        except Exception as e:
+            st.error(f"Fehler beim Speichern in der Pipeline: {e}")
