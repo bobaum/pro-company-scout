@@ -39,7 +39,6 @@ if supabase and not st.session_state.lebenslauf_text and not st.session_state.sk
         pass
 
 # --- NEUES LAYOUT ---
-# Linke Spalte bekommt mehr Platz (Ratio 3 zu 2)
 col1, col2 = st.columns([3, 2], gap="large")
 
 with col1:
@@ -53,12 +52,18 @@ with col1:
             extracted_text = ""
             for page in reader.pages:
                 extracted_text += page.extract_text() + "\n"
+            
+            # --- HIER MUSS DER BEREINIGUNGS-SCHRITT HIN ---
+            if extracted_text:
+                extracted_text = extracted_text.replace('\x00', '')
+            # ---------------------------------------------
+            
             st.session_state.lebenslauf_text = extracted_text
             st.toast("PDF erfolgreich ausgelesen!", icon="✅")
         except Exception as e:
             st.error(f"Fehler beim Lesen des PDFs: {e}")
 
-    # Das Textfeld ist jetzt links und riesig
+    # Das Textfeld ist links
     lebenslauf_input = st.text_area(
         "Lebenslauf im Textformat:", 
         value=st.session_state.lebenslauf_text, 
@@ -104,4 +109,4 @@ with col2:
             except Exception as e:
                 st.error(f"Speicherfehler: {e}")
         else:
-            st.error("Keine Datenbankverbindung.")
+            st.error("Keine Datenbankverbindung vorhanden.")
