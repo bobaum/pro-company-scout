@@ -44,9 +44,24 @@ def load_user_profile():
 
 profil = load_user_profile()
 
-# --- SESSION STATE ÜBERNAHME AUS DEM SCOUT ---
-default_company = st.session_state.get("selected_company", "")
-default_url = st.session_state.get("selected_url", "")
+# --- SESSION STATE ÜBERNAHME AUS DEM SCOUT (ALLE GÄNGIGEN KEYS ABFANGEN) ---
+default_company = (
+    st.session_state.get("selected_company")
+    or st.session_state.get("scout_company")
+    or st.session_state.get("analyse_company")
+    or st.session_state.get("analyse_firma")
+    or st.session_state.get("firma")
+    or ""
+)
+
+default_url = (
+    st.session_state.get("selected_url")
+    or st.session_state.get("scout_url")
+    or st.session_state.get("analyse_url")
+    or st.session_state.get("url")
+    or st.session_state.get("website")
+    or ""
+)
 
 # --- EINGABEBEREICH ---
 col1, col2 = st.columns(2)
