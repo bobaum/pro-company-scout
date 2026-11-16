@@ -82,18 +82,23 @@ with col2:
         placeholder="z. B. Max Mustermann (HR / Fachbereich)"
     )
 
-# --- HELPER: WEBSEITE VIA JINA READER AUSLESEN ---
+# --- HELPER: WEBSEITE VIA JINA READER AUSLESEN (MIT ROBUSTEM TIMEOUT) ---
 def scrape_website_jina(url):
+    if not url or url == "https://":
+        return "Keine Webseiten-URL angegeben."
     if not url.startswith("http"):
         url = "https://" + url
     jina_url = f"https://r.jina.ai/{url}"
     try:
-        response = requests.get(jina_url, timeout=15)
+        # Harter Timeout nach 10 Sekunden, damit es nicht ewig hängt
+        response = requests.get(jina_url, timeout=10)
         if response.status_code == 200:
             return response.text[:15000]
-        return None
-    except Exception:
-        return None
+        return f"Webseite konnte nicht geladen werden (HTTP Status: {response.status_code})"
+    except requests.exceptions.Timeout:
+        return "Hinweis: Die Webseite hat zu lange geantwortet (Timeout). Die Analyse erfolgt basierend auf dem Unternehmensnamen und Standort."
+    except Exception as e:
+        return f"Konnte Webseiten-Inhalt nicht abrufen: {e}"
 
 # --- HELPER: GEMINI MIT RETRY & FALLBACK ---
 def generate_with_retry(client, prompt_text):
