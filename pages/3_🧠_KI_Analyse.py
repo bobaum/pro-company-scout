@@ -138,7 +138,7 @@ if st.button("Unternehmen analysieren & Match berechnen", type="primary", width=
 
                 try:
                     response = gemini_client.models.generate_content(
-                        model="gemini-2.5-flash",
+                        model="gemini-3.8-flash",
                         contents=prompt
                     )
                     st.session_state["last_analysis"] = response.text
