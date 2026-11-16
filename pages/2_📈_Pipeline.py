@@ -31,8 +31,12 @@ if not supabase:
 
 # --- DATEN LADEN & KPIs BERECHNEN ---
 try:
-    response = supabase.table("pipeline").select("*").execute()
-    df_pipeline = pd.DataFrame(response.data)
+    # Dein Supabase Update / Upsert Befehl (z.B. data_editor Speicherung)
+    supabase.table("pipeline").upsert(updated_data).execute()
+    st.toast("✅ Pipeline erfolgreich aktualisiert!", icon="💾")
+except Exception as ex:
+    # Zeigt den echten Systemfehler exakt an statt ihn zu verschlucken[cite: 4]
+    st.error(f"Fehler beim Cloud-Update: {ex}")
     
     if df_pipeline.empty:
         df_pipeline = pd.DataFrame(columns=["unternehmen", "rolle", "status", "deadline", "notizen", "created_at"])
