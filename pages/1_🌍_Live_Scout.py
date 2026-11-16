@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from supabase import create_client
 
-st.set_page_config(page_title="Live Scout", page_icon="🌍")
+st.set_page_config(page_title="Live Scout", page_icon="🌍", layout="wide")
 st.title("🌍 Live Company Scout")
 st.markdown("Suche zielgerichtet nach Unternehmen und übergebe sie direkt an deine Pipeline oder die KI-Analyse.")
 
@@ -33,7 +33,7 @@ col1, col2, col3 = st.columns([2, 2, 1])
 with col1:
     such_branche = st.text_input("Branche / Rolle:", placeholder="z.B. IT Consulting")
 with col2:
-    such_ort = st.text_input("Stadt / Region:", placeholder="z.B. Dublin")
+    such_ort = st.text_input("Stadt / Region:", placeholder="z.B. Osnabrück")
 with col3:
     max_ergebnisse = st.slider("Anzahl:", 5, 20, 10, step=5)
 
@@ -46,7 +46,6 @@ if st.button("🚀 Unternehmen suchen"):
             headers = {
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": places_api_key,
-                # NEU: places.websiteUri wurde hinzugefügt!
                 "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.id,places.location,places.websiteUri"
             }
             payload = {"textQuery": f"{such_branche} in {such_ort}"}
@@ -92,7 +91,6 @@ if st.session_state.search_results:
         name = place.get("displayName", {}).get("text", "Unbekannt")
         adresse = place.get("formattedAddress", "Keine Adresse hinterlegt")
         place_id = place.get("id")
-        # NEU: Wir greifen die URL aus den Google-Daten ab
         website_url = place.get("websiteUri", "")
         
         with st.container(border=True):
@@ -106,9 +104,17 @@ if st.session_state.search_results:
             with btn_col1:
                 if st.button(f"➕ Zur Pipeline hinzufügen", key=f"pipe_{place_id}"):
                     if supabase:
-                        new_entry = {"unternehmen": name, "rolle": "Initiativ", "status": "Neu", "notizen": adresse}
-                        supabase.table("pipeline").insert(new_entry).execute()
-                        st.toast(f"✅ {name} im Dashboard gespeichert!", icon="💾")
+                        try:
+                            # Duplikatsprüfung: Prüfen, ob Unternehmen bereits existiert
+                            existing = supabase.table("pipeline").select("id").eq("unternehmen", name).execute()
+                            if existing.data:
+                                st.warning(f"⚠️ '{name}' ist bereits in deiner Pipeline vorhanden!")
+                            else:
+                                new_entry = {"unternehmen": name, "rolle": "Initiativ", "status": "Neu", "notizen": adresse}
+                                supabase.table("pipeline").insert(new_entry).execute()
+                                st.toast(f"✅ {name} im Dashboard gespeichert!", icon="💾")
+                        except Exception as e:
+                            st.error(f"Datenbankfehler beim Speichern: {e}")
                     else:
                         st.error("Datenbankverbindung fehlt.")
             
@@ -116,6 +122,5 @@ if st.session_state.search_results:
                 if st.button(f"🤖 KI-Match prüfen", key=f"ki_{place_id}", type="primary"):
                     st.session_state.analyze_company_name = name
                     st.session_state.analyze_company_details = f"Adresse: {adresse}\nBranche gesucht: {st.session_state.last_search_query}"
-                    # NEU: URL in den Tresor legen für den Teleport
                     st.session_state.analyze_company_url = website_url
                     st.switch_page("pages/3_🧠_KI_Analyse.py")
