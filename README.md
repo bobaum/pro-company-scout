@@ -40,24 +40,3 @@ Ein Web Scraper liest die Homepage der Zielfirma aus. Gemini vergleicht dann die
 
 4. Profil Editor
 Hier lade ich meinen PDF Lebenslauf hoch. Der Text wird extrahiert und zusammen mit meinen weiteren Zielen in der Cloud gespeichert.
-
-## Setup für lokales Ausführen
-
-Falls ihr euch das Tool nicht nur im Code ansehen wollt, sondern selbst testen möchtet wie es in der Praxis funktioniert, könnt ihr es ganz einfach lokal bei euch starten.
-
-1. Repository klonen:
-git clone https://github.com/bobaum/pro-company-scout.git
-cd pro-company-scout
-
-2. Abhängigkeiten installieren:
-pip install -r requirements.txt
-
-3. Secrets anlegen:
-Erstelle im Ordner .streamlit eine Datei namens secrets.toml mit folgendem Inhalt:
-SUPABASE_URL = deine_supabase_url
-SUPABASE_KEY = dein_supabase_key
-PLACES_API_KEY = dein_google_places_key
-GEMINI_API_KEY = dein_gemini_key
-
-4. App starten:
-streamlit run app.py
